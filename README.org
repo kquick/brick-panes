@@ -63,7 +63,7 @@ Let's start by defining the underlying data structures that will be used to
 represent those projects in memory, and which can be serialized to a JSON storage
 file:
 
-#+begin_example
+#+begin_src haskell
 import           Data.Text ( Text )
 import           Data.Time.Calendar
 
@@ -95,22 +95,22 @@ data Note = Note { note :: Text
                  , notedOn :: Day
                  }
   deriving Generic
-#+end_example
+#+end_src
 
 Each of these definitions will have an ~aeson~ ~ToJSON~ derivation so that our
 projects can be read from and written to a local JSON-format file.
 
-  #+begin_quotation
+  #+begin_quote
   Note that the ~ToJSON~ instances along with other administrative definitions
   are not shown here: this is a simple README and not intended to be a literate
   Haskell program, and a fully specified version of this mywork example can be
   found in the ~samples/mywork~ directory of this repository).
-  #+end_quotation
+  #+end_quote
 
 Since this is a TUI application, we will now design the overall appearance of the
 application:
 
-  #+begin_picture
+#+begin_example
   +------------------------------- mywork v0.1 -------------------------------+
   | Projects: 30 (Author=8, Contributor=19, User=2), 2017-08-28 to 2022-09-10 |
   |---------------------------------------------------------------------------|
@@ -129,7 +129,7 @@ application:
   |---------------------------------------------------------------------------|
   |  F1 - Load/Save    F2 - Add Project   F3 - Add Location   F4 - Add Note   |
   +---------------------------------------------------------------------------+
-  #+end_picture
+#+end_example
 
 
 There will be a summary line across the top and a list of projects on the left
@@ -174,7 +174,7 @@ from various configuration sources, but for this simple introduction, it will
 just start out with a hard-coded name (although this might change later due to
 the Load operation).
 
-  #+begin_example
+  #+begin_src haskell
   data MyWorkCore = MyWorkCore { projFile :: FilePath
                                , myProjects :: Projects
                                , myWorkFocus :: FocusRing WName
@@ -184,13 +184,13 @@ the Load operation).
                               , myProjects = Projects mempty
                               , myWorkFocus = focusRing [ WProjList, WLocation ]
                               }
-  #+end_example
+  #+end_src
 
 
 The ~name~ parameter for the Brick ~Widget~ instances will be handled by a simple
 declaration:
 
-  #+begin_example
+  #+begin_src haskell
   data WName = WSummary | WProjList | WLocation | WNotes | WOps | WLoader
   #+end_example
 
@@ -198,17 +198,17 @@ For this simple application, there is no application-specific event type.  This
 could be specified as ~()~ directly, but we will use a convenient type synonym to
 differentiate supplying this type for Brick Event types v.s. other types:
 
-  #+begin_src
+  #+begin_src haskell
   type MyWorkEvent = ()  -- No app-specific event for this simple app
   #+end_src
 
 Each Pane will be identified by its own identifying datatype which will provide
 an instance of the ~Pane~ class.  The ~Pane~ class is defined in brick-panes:
 
-  #+begin_example
+  #+begin_src haskell
   class Pane n appEv pane updateType | pane -> n, pane -> updateType where
       ...
-  #+end_example
+  #+end_src
 
 where the ~n~ parameter is the same type that the application will provide to
 Brick's ~Widget~ types.
@@ -219,7 +219,7 @@ used, otherwise a plain data type can be created, as is the instance here for th
 summary and operations panes.  We'll start by creating a couple of the primary
 panes, and then come back later to add the additional panes.
 
-  #+begin_example
+  #+begin_src haskell
   {-# LANGUAGE MultiParamTypeClasses #-}
 
   data SummaryPane = SummaryPane
@@ -228,7 +228,7 @@ panes, and then come back later to add the additional panes.
   instance Pane WName MyWorkEvent SummaryPane updateType where ...
   instance Pane WName MyWorkEvent Projects updateType where ...
   instance Pane WName MyWorkEvent OperationsPane updateType where ...
-  #+end_example
+  #+end_src
 
 The other types for the instance and the actual instance details will be defined
 later.  It's also worth noting that it can be convenient to define each Pane in
@@ -239,7 +239,7 @@ This core state will be wrapped by the brick-pane ~Panel~ object, which collects
 the various ~Pane~ instances, and the result is provided to Brick to initialize
 the application.  Here's a summary of the brick-panes definitions for a ~Panel~.
 
-  #+begin_example
+  #+begin_src haskell
   data Panel n appEv state (panes :: [Type]) where ...
 
   basePanel :: state -> Panel n appev state '[]
@@ -254,12 +254,12 @@ the application.  Here's a summary of the brick-panes definitions for a ~Panel~.
 
   data PaneFocus n = Always | Never | WhenFocused
                    | WhenFocusedModal (Maybe (FocusRing n))
-  #+end_example
+  #+end_src
 
 To initialize our Brick application with the core state and the Panes defined
 above:
 
-  #+begin_example
+  #+begin_src haskell
   {-# LANGUAGE DataKinds #-}
 
   type MyWorkState = Panel Wname MyWorkEvent MyWorkCore
@@ -292,7 +292,7 @@ above:
             ]
 
   main = defaultMain myworkApp initialState
-  #+end_example
+  #+end_src
 
 In this initialization, we've defined the full type for the application, which
 consists of the base (global) type of ~MyWorkCore~, followed by a type-level list
@@ -314,7 +314,7 @@ as well as filling in the ~instance~ declarations introduced above.
 When drawing the application, the normal Brick drawing activities are performed,
 but drawing Panes in the Panel can be done very generically:
 
-  #+begin_example
+  #+begin_src haskell
   drawMyWork :: MyWorkState -> [Widget WName]
   drawMyWork mws =
     [
@@ -330,7 +330,7 @@ but drawing Panes in the Panel can be done very generically:
       , panelDraw OperationsPane mws
       ]
     ]
-  #+end_example
+  #+end_src
 
 This is a very simple function that defers the drawing of each Pane to that Pane
 via the ~panelDraw~ function.  The ~panelDraw~ return values are a ~Maybe~ value
@@ -345,7 +345,7 @@ various Panes depending on the current focus target and the individual Pane's
 event receptivity that was specified as the argument to the ~addToPanel~
 initialization call.
 
-  #+begin_example
+  #+begin_src haskell
   handleMyWorkEvent :: BrickEvent WName MyWorkEvent -> EventM WName MyWorkState ()
   handleMyWorkEvent = \case
     AppEvent _ -> return () -- this app does not use these
@@ -361,7 +361,7 @@ initialization call.
     ev -> do state0 <- get
              state <- handleFocusAndPanelEvents myWorkFocusL state0 ev
              put state
-  #+end_example
+  #+end_src
 
 The Panel will need to be able to access the focus ring in the base global state
 to determine the current focus.  It will need a Lens to do this, so we will
@@ -370,13 +370,13 @@ the field itself can be created through a number of different processes aside
 from the manual method used below, and brick-panes supplies the ~onBaseState~
 lens to translate from the outer state (defined below) to the base global state.
 
-  #+begin_example
+  #+begin_src haskell
   coreWorkFocusL :: Lens' MyWorkCore (FocusRing WName)
   coreWorkFocusL f c = (\f' -> c { myWorkFocus = f' }) <$> f (myWorkFocus c)
 
   myWorkFocusL :: Lens' MyWorkState (FocusRing WName)
   myWorkFocusL = onBaseState . coreWorkFocusL
-  #+end_example
+  #+end_src
 
 It is useful to observe that the ~handleMyWorkEvent~ handler did not need to
 define handlers for ~Tab~/~Shift-Tab~ to switch between panes: the Pane's
@@ -401,14 +401,14 @@ To begin with, it will be necessary to allow the Pane to have internal state, an
 to initialize that internal state.  The ~Pane~ class supports this via a data
 family declaration and an ~initPaneState~ method as defined in brick-panes:
 
-  #+begin_example
+  #+begin_src haskell
   class Pane n appEv pane updateType | pane -> n, pane -> updateType where
     data (PaneState pane appEv)  -- State information associated with this Pane
     type (InitConstraints pane initctxt) :: Constraint
     initPaneState (InitConstraints pane i) => i -> PaneState pane appEv
 
     type (InitConstraints pane initctxt) = ()
-  #+end_example
+  #+end_src
 
 An `InitConstraints~ constraint is attached to the ~initPaneState~ method, and
 that constraint is defined as part of the Pane instance.  This allows the ~Pane~
@@ -425,7 +425,7 @@ part of a ~Panel~, the ~i~ parameter defaults to the sub-type of the Panel that
 has already been initialized.  This means that for the ~SummaryPane~
 initialization call, the ~i~ parameter will be:
 
-  #+begin_src
+  #+begin_src haskell
   Panel Wname MyWorkEvent MyWorkCore '[ Projects, OperationsPane ]
   #+end_src
 
@@ -439,7 +439,7 @@ Panes.  This will be explored in more detail below, but at the present moment,
 the ~SummaryPane~ will have no internal state, so it will not need any
 ~InitConstraints~ defined:
 
-  #+begin_src
+  #+begin_src haskell
   {-# LANGUAGE TypeFamilies #-}
   {-# LANGUAGE TypeSynonymInstances #-}
 
@@ -454,7 +454,7 @@ To draw the pane, the ~Pane~ class provides another method, along with a
 corresponding constraint that can be used to encode any necessities for the draw
 implementation (which again default to ~()~ representing no constraints).
 
-  #+begin_example
+  #+begin_src haskell
   class Pane n appEv pane updateType | pane -> n, pane -> updateType where
     data (PaneState pane appEv)  -- State information associated with this Pane
     type (InitConstraints pane initctxt) :: Constraint
@@ -465,7 +465,7 @@ implementation (which again default to ~()~ representing no constraints).
 
     type (InitConstraints pane initctxt) = ()
     type (DrawConstraints pane drwctxt n) = ()
-  #+end_example
+  #+end_src
 
 The ~drawPane~ method takes two arguments and returns a ~Maybe~.  As discussed
 earlier in the general application drawing section, a ~Pane~ can return ~Nothing~
@@ -491,7 +491,7 @@ obtain this information, it needs to translate the ~drawcontext~ argument to the
 ~Projects~ list contained in the base global state; it can indicate this need via
 the ~DrawContext~ as follows:
 
-  #+begin_src
+  #+begin_src haskell
   instance Pane WName MyWorkEvent SummaryPane () where
     data (PaneState SummaryPane MyWorkEvent) = Unused
     type (DrawConstraints SummaryPane s WName) = ( HasProjects s )
@@ -508,7 +508,7 @@ the global base ~MyWorkCore~ object is simple, and the instance of that class
 for a ~Panel~ wrapper of that global base state can use the ~onBaseState~ lens
 previously discussed:
 
-  #+begin_src
+  #+begin_src haskell
   class HasProjects s where
     getProjects :: s -> Projects
 
@@ -521,7 +521,7 @@ previously discussed:
 
 Now all that's needed is the body of the ~drawSummary~ function itself:
 
-  #+begin_src
+  #+begin_src haskell
   drawSummary :: Projects -> Widget WName
   drawSummary prjcts =
     let prjs = projects prjcts
@@ -576,7 +576,7 @@ automatically maintain its own internal state such as the currently selected
 item, etc.  Thus, the ~Pane~ state will need to contain these two Brick widgets
 and the initialization method should prepare them.
 
-  #+begin_src
+  #+begin_src haskell
   instance Pane WName MyWorkEvent Projects updateType where
     data (PaneState Projects MyWorkEvent) = P { pL :: List WName Text
                                               , pS :: Editor Text WName
@@ -603,7 +603,7 @@ implementation of the ~Pane~.
 Drawing this pane is relatively simple and primarily just invokes the draw for
 the two Widgets it contains.
 
-  #+begin_src
+  #+begin_src haskell
   instance Pane WName MyWorkEvent Projects () where
     data (PaneState Projects MyWorkEvent) = P { pL :: List WName Text
                                               , pS :: Editor Text WName
@@ -630,7 +630,7 @@ class (with a ~getFocus~ lens method) and a Panel instance for it, so all that i
 needed here is the instance definition to extract the FocusRing from the global
 base state.
 
-  #+begin_src
+  #+begin_src haskell
   instance HasFocus MyWorkCore WName where
     getFocus f s =
       let setFocus jn = case focused jn of
@@ -653,7 +653,7 @@ As with the initialization and the drawing Pane operations, there is an operatio
 and corresponding constraint defined by brick-panes for allowing the ~Pane~ to
 handle events:
 
-  #+begin_src
+  #+begin_src haskell
   class Pane n appEv pane updateType | pane -> n, pane -> updateType where
     data (PaneState pane appEv)   -- State information associated with this pane
     type (InitConstraints pane initctxt) :: Constraint
@@ -709,7 +709,7 @@ The ~handleEditorEvent~ called internally expects a ~BrickEvent~, so the
 ~EventType~ must be specified accordingly.  And finally, a couple of helper
 lenses are defined:
 
-  #+begin_src
+  #+begin_src haskell
   instance Pane WName MyWorkEvent Projects () where
     data (PaneState Projects MyWorkEvent) = P { pL :: List WName Text
                                               , pS :: Editor Text WName
@@ -763,7 +763,7 @@ inactive in the current mode.
 This Pane stores no internal data, so no internal storage or initialization is
 needed.
 
-  #+begin_src
+  #+begin_src haskell
   instance Pane WName MyWorkEvent OperationsPane () where
     data (PaneState OperationsPane MyWorkEvent) = Unused
     initPaneState _ = Unused
@@ -775,14 +775,14 @@ This Pane is drawn with the ability to adjust the presented operations to
 indicate if they are active or not.  It must therefore have a class constraint
 that can indicate the active state for those bindings:
 
-  #+begin_src
+  #+begin_src haskell
   class HasSelection s where
     selectedProject :: s -> Maybe Project
   #+end_src
 
 The main instance for this will be for the Project List pane's state:
 
-  #+begin_src
+  #+begin_src haskell
   {-# LANGUAGE FlexibleInstances #-}
 
   instance HasSelection (PaneState Projects MyWorkEvent) where
@@ -796,7 +796,7 @@ Pane's state from anywhere "above" that Pane in the Panel type list, provided
 that the `PanelOps` constraint can be satisfied.  This can be used to define a
 `HasSelection` instance that will work for the Panel.
 
-  #+begin_src
+  #+begin_src haskell
   instance ( PanelOps WName MyWorkEvent Projects panes MyWorkCore
            , HasSelection (PaneState Projects MyWorkEvent)
            )
@@ -818,7 +818,7 @@ This indicates that the Projects Pane is /above/ the Operations Pane, so the
 latter cannot satisfy the `HasSelection` instance.  To fix this, simply re-order
 the type list for the main state and the initialization operation:
 
-  #+begin_src
+  #+begin_src haskell
   type MyWorkState = Panel WName MyWorkEvent MyWorkCore
                      '[ SummaryPane
                       , OperationsPane
@@ -841,7 +841,7 @@ Now that the `HasSelection` is defined to determine if a Project is currently
 selected, the draw functionality for the Operations pane can be made sensitive to
 that setting.
 
-  #+begin_src
+  #+begin_src haskell
   instance Pane WName MyWorkEvent OperationsPane () where
     data (PaneState OperationsPane MyWorkEvent) = Unused
     type (DrawConstraints OperationsPane s WName) = ( HasSelection s )
@@ -861,7 +861,7 @@ that setting.
 
 And the final change is to add the following to the ~myattrs~ map:
 
-  #+begin_src
+  #+begin_src haskell
   ...
   , (attrName "disabled", defAttr `withStyle` dim)
   ...
@@ -879,7 +879,7 @@ The next step in the design of the application is to add the ~Location~ Pane,
 which wasn't previously defined.  We'll need to add the Pane to the global Panel
 type and initialization:
 
-  #+begin_src
+  #+begin_src haskell
   type MyWorkState = Panel WName MyWorkEvent MyWorkCore
                      '[ SummaryPane
                       , OperationsPane
@@ -912,7 +912,7 @@ would modify the focus ring (e.g. a modal...).
 Rather than showing how each aspect of the ~Location~ Pane is defined, the whole
 thing is presented here at once:
 
-  #+begin_src
+  #+begin_src haskell
   instance Pane WName MyWorkEvent Location Project where
     data (PaneState Location MyWorkEvent) = L { lL :: List WName (Text, Maybe Day) }
     type (InitConstraints Location s) = ( HasSelection s, HasProjects s )
@@ -963,7 +963,7 @@ being displayed.
 Note that a ~WLList~ value was added to the ~WName~ type as well, and the main
 ~drawMyWork~ is updated to draw the Location pane:
 
-  #+begin_src
+  #+begin_src haskell
   drawMyWork mws =
     [
       joinBorders
@@ -989,7 +989,7 @@ selection is changed, to update the Locations displayed.  This is handled by
 extending the application's primary event handler to detect these changes and
 explicitly call the ~updatePane~ as seen in the modified excerpt here:
 
-  #+begin_src
+  #+begin_src haskell
     ...
     -- Otherwise, allow the Panes in the Panel to handle the event
     ev -> do state0 <- get
@@ -1047,7 +1047,7 @@ making any changes.
 The FileMgr Pane itself is implemented in the manner we have come to expect,
 although there are a couple of adjustments:
 
-  #+begin_src
+  #+begin_src haskell
   data FileMgrPane = FileMgrPane
 
   instance Pane WName MyWorkEvent FileMgrPane Bool where
@@ -1104,7 +1104,7 @@ although there are a couple of adjustments:
   slighly updated, and provide an instance for this Pane and any super-Pane
   types, but not for the base global state.
 
-  #+begin_src
+  #+begin_src haskell
   class HasProjects s where
     getProjects :: s -> (Bool, Projects)
 
@@ -1125,7 +1125,7 @@ although there are a couple of adjustments:
   with the indication that the pane should receive ~Events~ only when
   modally-active:
 
-  #+begin_src
+  #+begin_src haskell
   type MyWorkState = Panel WName MyWorkEvent MyWorkCore
                      '[ SummaryPane
                       , OperationsPane
@@ -1156,7 +1156,7 @@ although there are a couple of adjustments:
   and which can provide the monadic context for the initialization in the global
   event handler:
 
-  #+begin_src
+  #+begin_src haskell
     ...
     VtyEvent (Vty.EvKey (Vty.KFun 1) []) -> do
       fmgr <- liftIO initFileMgr
@@ -1174,7 +1174,7 @@ although there are a couple of adjustments:
 
   In the ~FileMgr~ Pane implementation, the ~initFileMgr~ function is defined:
 
-  #+begin_src
+  #+begin_src haskell
   initFileMgr :: IO (PaneState FileMgrPane MyWorkEvent)
   initFileMgr = do
     fb <- newFileBrowser selectNonDirectories WFBrowser Nothing
@@ -1185,7 +1185,7 @@ although there are a couple of adjustments:
   is ~True~, it is reset to ~False~ and the ~Projects~ Pane is notified of the
   new ~Projects~ data:
 
-  #+begin_src
+  #+begin_src haskell
     ev -> do proj0 <- gets selectedProject
              get >>= (\s -> handleFocusAndPanelEvents myWorkFocusL s ev) >>= put
              (new,prjs) <- gets getProjects
@@ -1200,7 +1200,7 @@ although there are a couple of adjustments:
   This invokes the ~Projects~ Pane ~updatePane~ method which is added to support
   updating the displayed projects based on the new data:
 
-  #+begin_src
+  #+begin_src haskell
   instance Pane WName MyWorkEvent Projects Projects where
     ...
     updatePane newprjs =
@@ -1213,24 +1213,22 @@ although there are a couple of adjustments:
   the other Panes, drawing those Panes with the ~"disabled"~ attribute if the
   modal is active.
 
-  #+begin_src
-drawMyWork mws =
-  let mainPanes =
-        [
-          borderWithLabel  (str $ " mywork " <> showVersion version <> " ")
-          $ vBox $ catMaybes
+  #+begin_src haskell
+  drawMyWork mws =
+    let mainPanes =
           [
-            panelDraw SummaryPane mws
-            ...
+            borderWithLabel  (str $ " mywork " <> showVersion version <> " ")
+            $ vBox $ catMaybes
+            [
+              panelDraw SummaryPane mws
+              ...
+            ]
           ]
-        ]
-      allPanes = catMaybes [ panelDraw FileMgrPane mws
-                           ]
-                 <> mainPanes
-      disableLower = \case
-        (m:ls) -> m : (withDefAttr (attrName "disabled") <$> ls)
-        o -> o
-  in joinBorders . withBorderStyle unicode <$> disableLower allPanes
+        allPanes = catMaybes [ panelDraw FileMgrPane mws ] <> mainPanes
+        disableLower = \case
+          (m:ls) -> m : (withDefAttr (attrName "disabled") <$> ls)
+          o -> o
+    in joinBorders . withBorderStyle unicode <$> disableLower allPanes
   #+end_src
   
 **** FileMgr Pane Notes
