@@ -1,0 +1,1282 @@
+* Overview
+
+The Brick Panes library is an overlay for the Brick TUI (Text User Interface)
+library that allows individual TUI screen areas to be independently developed and
+then easily composed into the overall application.  This library can be used to
+develop an application in a modular fashion where the screen is divided into a
+number of "panes" that individually handle their display and (optionally) their
+events with pane-specific internal state.  These discrete panes provide a general
+interface that can then easily be composed to provide the wholistic application
+functionality.
+
+* Context
+
+Brick is oriented around the display of and interaction with ~Widgets~.  This a
+nice overall design and lends itself well to discrete management of different
+types of TUI functionality.  The panes library builds on top of Brick Widgets to
+address the following higher-level compositional issues encountered when building
+a TUI application:
+
+1. Different Widgets have different interfaces.  A Widget must be called via a
+   widget-specific API.  Fundamentally however, there are a number of common
+   higher-level operations that an application performs for which the details are
+   a lower-level concern.
+
+2. Various application functionality can be isolated into different aspects, but
+   frequently the individual aspects are made up of multiple, cooperating widgets
+   that share some state.  Managing this state and coordinating the activities of
+   an inter-Widget aspect can be done via application-specific wrapper Widgets,
+   but often it's desirable to view ~Widgets~ as the /basic/ building blocks
+   (er.. "bricks") of the application and to then have a higher level of
+   abstraction for handling the different aspect "areas" of the application.
+
+This library provides the ~Pane~ as self-contained collector for Widgets that
+manage a particular aspect of the application within the global context of the
+entire application.  It also provides a ~Panel~, which is a composition of
+multiple ~Pane~ objects that maintains a simple general API while internally
+managing the ~Pane~ objects which compose the ~Panel~.
+
+The Haddock documentation describes the API, and the remainder of this README is
+an evolutionary introduction to developing an application with Panes.
+
+* Example Program
+
+To introduce the Panes library in a manner that reveals the motivation and
+interaction in a layered approach, the documentation here will demonstrate
+building a sample application step-by-step.
+
+The sample application that will be developed here is called "mywork" and is
+designed to help the software developer keep track of their work.  This is a
+simple little application that reads an input JSON file that provides information
+about different projects the developer is working on and then allows the
+developer to browse and manage the information about those projects.
+
+The underlying data for the mywork application consists of a list of Projects,
+where each Project has a top-level description.  For each project, there are a
+number of Locations, which represents various locations the project can be found
+at; the Locations can include local directories, code repositories (e.g. github),
+and publication sites (e.g. Hackage).  Each Location can have a date associated
+with it (statically or dynamically) as well as user-specified Notes.  In
+addition, the files in a project can be viewed in a simple scrollable region.
+
+Let's start by defining the underlying data structures that will be used to
+represent those projects in memory, and which can be serialized to a JSON storage
+file:
+
+#+begin_example
+import           Data.Text ( Text )
+import           Data.Time.Calendar
+
+
+newtype Projects = Projects { projects :: [Project] }
+  deriving Generic
+
+data Project = Project { name :: Text
+                       , role :: Role
+                       , description :: Text
+                       , language :: Either Text Language
+                       , locations :: [Location]
+                       }
+  deriving Generic
+
+data Role = Author | Maintainer | Contributor | User
+  deriving (Show, Enum, Bounded, Eq, Generic)
+
+data Language = Haskell | Rust | C | CPlusPlus | Python | JavaScript
+  deriving (Eq, Generic)
+
+data Location = Location { location :: Text
+                         , locatedOn :: Maybe Day
+                         , notes :: [Note]
+                         }
+  deriving Generic
+
+data Note = Note { note :: Text
+                 , notedOn :: Day
+                 }
+  deriving Generic
+#+end_example
+
+Each of these definitions will have an ~aeson~ ~ToJSON~ derivation so that our
+projects can be read from and written to a local JSON-format file.
+
+  #+begin_quotation
+  Note that the ~ToJSON~ instances along with other administrative definitions
+  are not shown here: this is a simple README and not intended to be a literate
+  Haskell program, and a fully specified version of this mywork example can be
+  found in the ~samples/mywork~ directory of this repository).
+  #+end_quotation
+
+Since this is a TUI application, we will now design the overall appearance of the
+application:
+
+  #+begin_picture
+  +------------------------------- mywork v0.1 -------------------------------+
+  | Projects: 30 (Author=8, Contributor=19, User=2), 2017-08-28 to 2022-09-10 |
+  |---------------------------------------------------------------------------|
+  | Project    | Location (for currently selected project in list)       Date |
+  | List       | Location                                                Date |
+  |            |   :                                                       :  |
+  |            |                                                              |
+  |            |                                                              |
+  |            |                                                              |
+  |            |--------------------------------------------------------------|
+  |            | Date - Note for currently selected location                  |
+  |            |  :       :                                                   |
+  |            |                                                              |
+  |            | [this is only visible if a Location is selected]             |
+  | search: XX |                                                              |
+  |---------------------------------------------------------------------------|
+  |  F1 - Load/Save    F2 - Add Project   F3 - Add Location   F4 - Add Note   |
+  +---------------------------------------------------------------------------+
+  #+end_picture
+
+
+There will be a summary line across the top and a list of projects on the left
+side.  Location information for the currently selected project in the list will
+be shown on the right side, and notes for a location will be shown if the
+location is highlighted.  The bottom will show function keys that can be used to
+perform activities.  Each of these areas will be a Pane.
+
+Activities:
+
+ * It should be possible to move the cursor between the Project List Pane and the
+   Location Pane via the Tab/Shift-Tab key; none of the other areas are
+   focusable.
+
+ * Typing when the Project List Pane is focused will modify the "search"
+   selection and the visible entries in the list.
+
+ * The function keys are global (they do not depend on which Pane is focused),
+   although they may be disabled (and visually marked differently) if not
+   applicable in the current mode.
+
+ * The Load/Save operation will bring up a modal dialog window, as will the Add
+   Project operation.  Being modal, both of these hold focus until dismissed.
+
+ * And finally, Ctrl-Q will quit the application in any state, and ESC will exit
+   from any current dialog, or if there is no dialog, ESC will exit the
+   application.
+
+Given the above core data structures, visual depiction, and general
+functionality, we can start to use the brick-panes library to build up this
+application in stages.
+
+** Startup and Configuration
+
+Our application will need to perform some general initialization at startup time
+to declare the Brick environment.  This includes initializing global state.
+Since the Panes will each internalize their own state management, the global
+state only needs to maintain elements that are globally necessary.  For our
+application, this will be the name of the project JSON file, the current Project
+data, and the Brick focus ring.  This could be passed on the command line or read
+from various configuration sources, but for this simple introduction, it will
+just start out with a hard-coded name (although this might change later due to
+the Load operation).
+
+  #+begin_example
+  data MyWorkCore = MyWorkCore { projFile :: FilePath
+                               , myProjects :: Projects
+                               , myWorkFocus :: FocusRing WName
+                               }
+
+  initMyWorkCore = MyWorkCore { projFile = "projects.json"
+                              , myProjects = Projects mempty
+                              , myWorkFocus = focusRing [ WProjList, WLocation ]
+                              }
+  #+end_example
+
+
+The ~name~ parameter for the Brick ~Widget~ instances will be handled by a simple
+declaration:
+
+  #+begin_example
+  data WName = WSummary | WProjList | WLocation | WNotes | WOps | WLoader
+  #+end_example
+
+For this simple application, there is no application-specific event type.  This
+could be specified as ~()~ directly, but we will use a convenient type synonym to
+differentiate supplying this type for Brick Event types v.s. other types:
+
+  #+begin_src
+  type MyWorkEvent = ()  -- No app-specific event for this simple app
+  #+end_src
+
+Each Pane will be identified by its own identifying datatype which will provide
+an instance of the ~Pane~ class.  The ~Pane~ class is defined in brick-panes:
+
+  #+begin_example
+  class Pane n appEv pane updateType | pane -> n, pane -> updateType where
+      ...
+  #+end_example
+
+where the ~n~ parameter is the same type that the application will provide to
+Brick's ~Widget~ types.
+
+Note each Pane will need a distinguishing ~Type~.  If there is already a ~Type~
+that is a reasonable representation of the data in the Pane, that type can be
+used, otherwise a plain data type can be created, as is the instance here for the
+summary and operations panes.  We'll start by creating a couple of the primary
+panes, and then come back later to add the additional panes.
+
+  #+begin_example
+  {-# LANGUAGE MultiParamTypeClasses #-}
+
+  data SummaryPane = SummaryPane
+  data OperationsPane = OperationsPane
+
+  instance Pane WName MyWorkEvent SummaryPane updateType where ...
+  instance Pane WName MyWorkEvent Projects updateType where ...
+  instance Pane WName MyWorkEvent OperationsPane updateType where ...
+  #+end_example
+
+The other types for the instance and the actual instance details will be defined
+later.  It's also worth noting that it can be convenient to define each Pane in
+its own module file; when done in this manner, the Pane's data type is the only
+thing that needs to be exported from the module (if defined in that module).
+
+This core state will be wrapped by the brick-pane ~Panel~ object, which collects
+the various ~Pane~ instances, and the result is provided to Brick to initialize
+the application.  Here's a summary of the brick-panes definitions for a ~Panel~.
+
+  #+begin_example
+  data Panel n appEv state (panes :: [Type]) where ...
+
+  basePanel :: state -> Panel n appev state '[]
+  basePanel = ...
+
+  addToPanel :: Pane n appev pane u
+                ...
+             => PaneFocus n
+             -> Panel n appev state panes
+             -> Panel n appev state (pane ': panes)
+  addToPanel n pnl = ...
+
+  data PaneFocus n = Always | Never | WhenFocused
+                   | WhenFocusedModal (Maybe (FocusRing n))
+  #+end_example
+
+To initialize our Brick application with the core state and the Panes defined
+above:
+
+  #+begin_example
+  {-# LANGUAGE DataKinds #-}
+
+  type MyWorkState = Panel Wname MyWorkEvent MyWorkCore
+                     '[ SummaryPane
+                      , Projects
+                      , OperationsPane
+                      ]
+
+  initialState :: MyWorkState
+  initialState = addToPanel Never
+                 $ addToPanel WhenFocused
+                 $ addToPanel Never
+                 $ basePanel initMyWorkCore
+
+  myworkApp :: App MyWorkState MyWorkEvent WName
+  myworkApp = App { appDraw = drawMyWork
+                  , appChooseCursor = showFirstCursor
+                  , appHandleEvent = handleMyWorkEvent
+                  , appStartEvent = return ()
+                  , appAttrMap = const myattrs
+                  }
+
+  myattrs = attrMap defAttr
+            [
+              (editAttr, white `on` black)
+            , (editFocusedAttr, yellow `on` black)
+            , (listAttr, defAttr `withStyle` defaultStyleMask)
+            , (listSelectedAttr, defAttr `withStyle` bold)
+            , (listSelectedFocusedAttr, defAttr `withStyle` reverseVideo)
+            ]
+
+  main = defaultMain myworkApp initialState
+  #+end_example
+
+In this initialization, we've defined the full type for the application, which
+consists of the base (global) type of ~MyWorkCore~, followed by a type-level list
+of the panes in the application.  The initialization function does not need to
+explicitly reference the type of each Pane, but it should add them in the reverse
+order they are specified in the type list (the ~$~ composition is right-to-left,
+so the order of the two lists is the same).  When adding each Pane, the parameter
+specifies what the focus policy for delivering events to that Pane should be.  In
+our application, the ~SummaryPane~ will never receive events, the Projects list
+pane will receive events when focused, and the ~OperationsPane~ events will be
+handled globally rather than by the ~Pane~ since they should apply in any state,
+regardless of the focus.
+
+All that's left is to define the ~drawMyWork~ and ~handleMyWorkEvent~ functions,
+as well as filling in the ~instance~ declarations introduced above.
+
+** Drawing
+
+When drawing the application, the normal Brick drawing activities are performed,
+but drawing Panes in the Panel can be done very generically:
+
+  #+begin_example
+  drawMyWork :: MyWorkState -> [Widget WName]
+  drawMyWork mws =
+    [
+      joinBorders
+      $ withBorderStyle unicode
+      $ borderWithLabel (str $ " mywork " <> showVersion version <> " ")
+      $ vBox $ catMaybes
+      [
+        panelDraw SummaryPane mws
+      , Just hBorder
+      , panelDraw (mws ^. onBaseState . to myProjects) mws
+      , Just hBorder
+      , panelDraw OperationsPane mws
+      ]
+    ]
+  #+end_example
+
+This is a very simple function that defers the drawing of each Pane to that Pane
+via the ~panelDraw~ function.  The ~panelDraw~ return values are a ~Maybe~ value
+where ~Nothing~ indicates that the Pane should not currently be drawn; this will
+be used later when we add the modal FileLoader and AddProject panes.
+
+** Event Handling
+
+The event handler is also fairly normal to Brick, except that here again, the
+Panel provides a common function to call that will dispatch the event to the
+various Panes depending on the current focus target and the individual Pane's
+event receptivity that was specified as the argument to the ~addToPanel~
+initialization call.
+
+  #+begin_example
+  handleMyWorkEvent :: BrickEvent WName MyWorkEvent -> EventM WName MyWorkState ()
+  handleMyWorkEvent = \case
+    AppEvent _ -> return () -- this app does not use these
+    -- Application global actions
+    --   * CTRL-q quits
+    --   * CTRL-l refreshes vty
+    --   * ESC dismisses any modal window
+    VtyEvent (Vty.EvKey (Vty.KChar 'q') [Vty.MCtrl])  -> halt
+    VtyEvent (Vty.EvKey (Vty.KChar 'l') [Vty.MCtrl])  -> do
+      vty <- getVtyHandle
+      liftIO $ Vty.refresh vty
+    -- Otherwise, allow the Panes in the Panel to handle the event
+    ev -> do state0 <- get
+             state <- handleFocusAndPanelEvents myWorkFocusL state0 ev
+             put state
+  #+end_example
+
+The Panel will need to be able to access the focus ring in the base global state
+to determine the current focus.  It will need a Lens to do this, so we will
+create a simple lens definition here to accomodate that; the lens accessor for
+the field itself can be created through a number of different processes aside
+from the manual method used below, and brick-panes supplies the ~onBaseState~
+lens to translate from the outer state (defined below) to the base global state.
+
+  #+begin_example
+  coreWorkFocusL :: Lens' MyWorkCore (FocusRing WName)
+  coreWorkFocusL f c = (\f' -> c { myWorkFocus = f' }) <$> f (myWorkFocus c)
+
+  myWorkFocusL :: Lens' MyWorkState (FocusRing WName)
+  myWorkFocusL = onBaseState . coreWorkFocusL
+  #+end_example
+
+It is useful to observe that the ~handleMyWorkEvent~ handler did not need to
+define handlers for ~Tab~/~Shift-Tab~ to switch between panes: the Pane's
+~handleFocusAndPanelEvents~ handles these events automatically.
+
+
+** Initial Panes
+
+At this point, all the general application code is ready to go.  More will be
+added later, but now it's time to turn our attention to the individual Panes.
+
+*** Summary Pane
+
+Previously we introduced the need for an ~instance Pane~ for each Pane, including
+this ~SummaryPane~, but no instance details were provided.  Here, the brick-panes
+~Pane~ class will be developed in more detail in parallel with the
+~SummaryPane~'s instance.
+
+**** Initialization
+
+To begin with, it will be necessary to allow the Pane to have internal state, and
+to initialize that internal state.  The ~Pane~ class supports this via a data
+family declaration and an ~initPaneState~ method as defined in brick-panes:
+
+  #+begin_example
+  class Pane n appEv pane updateType | pane -> n, pane -> updateType where
+    data (PaneState pane appEv)  -- State information associated with this Pane
+    type (InitConstraints pane initctxt) :: Constraint
+    initPaneState (InitConstraints pane i) => i -> PaneState pane appEv
+
+    type (InitConstraints pane initctxt) = ()
+  #+end_example
+
+An `InitConstraints~ constraint is attached to the ~initPaneState~ method, and
+that constraint is defined as part of the Pane instance.  This allows the ~Pane~
+instance to specify any constraints that are needed to accomodate actions that
+will be performed in the ~initPaneState~ method.  By default, there are no
+~InitConstraints~.
+
+At this point, you might recall that the initialization of the Panel was
+performed by calls to ~addPanel~, which only passed information about whether
+events should be delivered to the state, but there was nothing providing the ~i~
+argument that is defined here for the ~initPaneState~ method.  That's because the
+~Pane~ class is defined in a very general fashion, but when the ~Pane~ is used as
+part of a ~Panel~, the ~i~ parameter defaults to the sub-type of the Panel that
+has already been initialized.  This means that for the ~SummaryPane~
+initialization call, the ~i~ parameter will be:
+
+  #+begin_src
+  Panel Wname MyWorkEvent MyWorkCore '[ Projects, OperationsPane ]
+  #+end_src
+
+Recall that this is the same as MyWorkState except it is missing the SummaryPanel
+entry in the type list.  When initializing the ~Projects~ pane, then the type
+will contain only the ~OperationsPane~, and the ~OperationsPane~ initialization
+will have access only to the base ~MyWorkCore~ type information.  This heirarchy
+of availability may affect the order in which the Panes should be specified in
+the top-level type if some Panes will need access to information from other
+Panes.  This will be explored in more detail below, but at the present moment,
+the ~SummaryPane~ will have no internal state, so it will not need any
+~InitConstraints~ defined:
+
+  #+begin_src
+  {-# LANGUAGE TypeFamilies #-}
+  {-# LANGUAGE TypeSynonymInstances #-}
+
+  instance Pane WName MyWorkEvent SummaryPane updateType where
+    data (PaneState SummaryPane MyWorkEvent) = Unused
+    initPaneState _ = Unused
+  #+end_src
+
+**** Drawing
+
+To draw the pane, the ~Pane~ class provides another method, along with a
+corresponding constraint that can be used to encode any necessities for the draw
+implementation (which again default to ~()~ representing no constraints).
+
+  #+begin_example
+  class Pane n appEv pane updateType | pane -> n, pane -> updateType where
+    data (PaneState pane appEv)  -- State information associated with this Pane
+    type (InitConstraints pane initctxt) :: Constraint
+    type (DrawConstraints pane drwctxt n) :: Constraint
+    initPaneState (InitConstraints pane i) => i -> PaneState pane appEv
+    drawPane :: (DrawConstraints pane drawcontext n, Eq n)
+             => PaneState pane appEv -> drawcontext -> Maybe (Widget n)
+
+    type (InitConstraints pane initctxt) = ()
+    type (DrawConstraints pane drwctxt n) = ()
+  #+end_example
+
+The ~drawPane~ method takes two arguments and returns a ~Maybe~.  As discussed
+earlier in the general application drawing section, a ~Pane~ can return ~Nothing~
+to indicate it shouldn't be drawn at the present time.  The ~SummaryPane~ is
+always drawn, so it will always return a ~Just~ value.
+
+The first argument provided to the ~drawPane~ method is the data family value
+defined for this pane and initialized by the ~initPaneState~.
+
+The second parameter is an abstract context for drawing.  As with the
+~initPaneState~ method, the ~Pane~ class defines this in a very generic manner,
+but when the ~Pane~ is used in a ~Panel~, the ~Panel~ provides the sub-state of
+the ~Panel~ that *includes* the current ~Pane~, but not the elements preceeding
+it in the type list.  Here, the ~SummaryPane~ is the first element in the
+~MyWorkState~, so its ~drawPane~ will receive the full ~MyDrawState~ value, but
+the panes beneath it will receive subsequently lesser sub-type portions.
+
+For the ~SummaryPane~, the ~drawPane~ instance will need to display the number of
+~Projects~ sub-divided by the ~Project~ ~Role~, as well as the full date range
+for all ~Projects~.  To obtain this information, it will need access to the
+~Projects~ data that is contained in the global base state ~MyWorkCore~.  To
+obtain this information, it needs to translate the ~drawcontext~ argument to the
+~Projects~ list contained in the base global state; it can indicate this need via
+the ~DrawContext~ as follows:
+
+  #+begin_src
+  instance Pane WName MyWorkEvent SummaryPane () where
+    data (PaneState SummaryPane MyWorkEvent) = Unused
+    type (DrawConstraints SummaryPane s WName) = ( HasProjects s )
+    initPaneState _ = Unused
+    drawPane _ s = Just $ drawSummary (getProjects s)
+
+  drawSummary :: Projects -> Widget WName
+  drawSummary prjs = ...
+  #+end_src
+
+The ~HasProjects~ constraint is a class that our application will defined as
+capable of providing the ~getProjects~ method.  The instance of that class for
+the global base ~MyWorkCore~ object is simple, and the instance of that class
+for a ~Panel~ wrapper of that global base state can use the ~onBaseState~ lens
+previously discussed:
+
+  #+begin_src
+  class HasProjects s where
+    getProjects :: s -> Projects
+
+  instance HasProjects MyWorkCore where
+    getProjects = myProjects
+
+  instance HasProjects (Panel WName MyWorkEvent MyWorkCore panes) where
+    getProjects = getProjects . view onBaseState
+  #+end_src
+
+Now all that's needed is the body of the ~drawSummary~ function itself:
+
+  #+begin_src
+  drawSummary :: Projects -> Widget WName
+  drawSummary prjcts =
+    let prjs = projects prjcts
+        prjcnt = str $ "# Projects=" <> show (length prjs) <> subcounts
+        subcounts = (" (" <>)
+                    $ (<> ")")
+                    $ List.intercalate ", "
+                    [ show r <> "=" <> show (length fp)
+                    | r <- [minBound .. maxBound]
+                    , let fp = filter (isRole r) prjs
+                    , not (null fp)
+                    ]
+        isRole r p = r == role p
+        dateRange = str (show (minimum projDates)
+                         <> ".."
+                         <> show (maximum projDates)
+                        )
+        locDates prj = catMaybes (locatedOn <$> locations prj)
+        projDates = concatMap locDates prjs
+    in vLimit 1
+       $ if null prjs
+         then str "No projects defined"
+         else prjcnt <+> fill ' ' <+> dateRange
+  #+end_src
+
+Note that all of the complexity of this drawing functionality, as well as
+determining the arguments to it are internal to the Pane implementation (usually
+in its own file) and supporting classes and instances; the top-level draw
+operation retains its simplicity.
+
+**** Summary Pane Notes
+
+Since the Summary pane does not have internal state to be updated and it does not
+handle events, the above is sufficient to fully define the ~SummaryPane~!
+
+
+*** Project List Pane
+
+Now that the ~SummaryPane~ has been implemented, we turn our attention to the
+Project List Pane.  This pane will also need access to the list of Projects, but
+it can re-use the previously defined ~HasProjects~ class in its constraints where
+necessary.
+
+**** Initialization
+
+This Pane is slightly more complex: it will contain a ~Brick.Widgets.List~ and
+also a ~Brick.Widgets.Edit~ to handle the search filter.  There are two choices
+here: create the ~Brick.Widgets.List~ widget as part of the long-term ~Pane~
+state, or dynamically create the ~Brick.Widgets.List~ widget each time it is
+drawn.  The former choice is better, since the ~Brick.Widgets.List~ will then
+automatically maintain its own internal state such as the currently selected
+item, etc.  Thus, the ~Pane~ state will need to contain these two Brick widgets
+and the initialization method should prepare them.
+
+  #+begin_src
+  instance Pane WName MyWorkEvent Projects updateType where
+    data (PaneState Projects MyWorkEvent) = P { pL :: List WName Text
+                                              , pS :: Editor Text WName
+                                              }
+    type (InitConstraints Projects s) = ( HasProjects s )
+    initPaneState s = let prjs = projects $ getProjects s
+                          pl = list WPList (Vector.fromList (name <$> prjs)) 1
+                          ps = editor WPFilter (Just 1) ""
+                      in P pl ps
+  #+end_src
+
+Note that both the List and the Editor widgets require a unique ~WName~ value.
+These values should also be added to the global ~WName~ definition previously
+introduced above.
+
+This is also a good demonstration of the encapsulation that the brick-panes
+library provides: the primary application simply needs the ability to display and
+allow selection of a project.  The actual details of how the display is performed
+and how the selection is performed is not visible or important outside of the
+implementation of the ~Pane~.
+
+**** Drawing
+
+Drawing this pane is relatively simple and primarily just invokes the draw for
+the two Widgets it contains.
+
+  #+begin_src
+  instance Pane WName MyWorkEvent Projects () where
+    data (PaneState Projects MyWorkEvent) = P { pL :: List WName Text
+                                              , pS :: Editor Text WName
+                                              }
+    type (InitConstraints Projects s) = ( HasProjects s )
+    type (DrawConstraints Projects s WName) = ( HasFocus s WName )
+    initPaneState s = let prjs = projects $ getProjects s
+                          pl = list WPList (Vector.fromList (name <$> prjs)) 1
+                          ps = editor WPFilter (Just 1) ""
+                      in P pl ps
+    drawPane ps gs =
+      let isFcsd = gs^.getFocus.to focused == Just WProjList
+          lst = renderList (const txt) isFcsd (pL ps)
+          srch = str "Search: " <+> renderEditor (txt . head) isFcsd (pS ps)
+      in Just $ vBox [ lst, fill ' ', srch ]
+  #+end_src
+
+Unlike the ~SummaryPane~, this pane's draw code does not necessarily access to
+the global base state, but it does need access to the FocusRing in order to tell
+the List renderer if the list has focus.  This can be done by defining another
+class ~HasFocus~ that will be similar to the ~HasProjects~ class described above;
+since this is a very common need, the brick-panes library already provides this
+class (with a ~getFocus~ lens method) and a Panel instance for it, so all that is
+needed here is the instance definition to extract the FocusRing from the global
+base state.
+
+  #+begin_src
+  instance HasFocus MyWorkCore WName where
+    getFocus f s =
+      let setFocus jn = case focused jn of
+            Nothing -> s
+            Just n -> s & coreWorkFocusL %~ focusSetCurrent n
+      in setFocus <$> (f $ Focused $ focusGetCurrent (s^.coreWorkFocusL))
+  #+end_src
+
+One thing to note about the draw implementation above is that the focused
+indication passed to both the list and edit widgets is *not* based on their
+individual ~WName~ values but instead on the ~WName~ of the ~Projects Pane~
+itself.  This is because the pane will receive focus and will direct events to
+both widgets (which conveniently do not overlap in their event handling).  There
+is no specific additional differentiation or selectability between the list and
+edit widgets.
+
+**** Event Handling
+
+As with the initialization and the drawing Pane operations, there is an operation
+and corresponding constraint defined by brick-panes for allowing the ~Pane~ to
+handle events:
+
+  #+begin_src
+  class Pane n appEv pane updateType | pane -> n, pane -> updateType where
+    data (PaneState pane appEv)   -- State information associated with this pane
+    type (InitConstraints pane initctxt) :: Constraint
+    type (DrawConstraints pane drwctxt n) :: Constraint
+    type (EventConstraints pane evctxt) :: Constraint
+    type (EventType pane n appEv)
+    initPaneState :: (InitConstraints pane i) => i -> PaneState pane appEv
+    drawPane :: (DrawConstraints pane drawcontext n, Eq n)
+             => PaneState pane appEv -> drawcontext -> Maybe (Widget n)
+    focusable :: (EventConstraints pane eventcontext, Eq n)
+              => eventcontext -> PaneState pane appEv -> Seq.Seq n
+    handlePaneEvent :: (EventConstraints pane eventcontext, Eq n)
+                    => eventcontext
+                    -> EventType pane n appEv
+                    -> PaneState pane appEv
+                    -> EventM n es (PaneState pane appEv)
+    updatePane :: updateType -> PaneState pane appEv -> PaneState pane appEv
+
+    -- A set of defaults that allows a minimal instance specification
+    type (InitConstraints pane initctxt) = ()
+    type (DrawConstraints pane drwctxt n) = ()
+    type (EventConstraints pane evctxt) = ()
+    type (EventType pane n appev) = Vty.Event  -- by default, handle Vty events
+    focusable _ _ = mempty
+    handlePaneEvent _ _ = return
+    updatePane _ = id
+  #+end_src
+
+The additional element involved in handling events is the ~EventType~ type family
+declaration above, which can be used to specify which type of Event the Pane will
+respond to.  Brick Events are arranged in a heirarchy of relationships, where the
+higher level event can handle Mouse events and application-level as well as
+Keyboard events, and the ~EventType~ can be set to indicate which type of event
+this ~Pane~ should be provided with (where the default is Keyboard events).  The
+~Panel~'s ~handleFocusAndPanelEvents~ will automatically pass the correct
+~EventType~ to the ~Pane~ ~handlePaneEvent~ method.
+
+There is also a new ~focusable~ method in the ~Pane~ class, which is used to
+determine if any Widgets that are part of the Pane can be members of the
+FocusRing at the current time.  This is used by the ~Panel~ after processing each
+event to determine the new ~FocusRing~ contents.  This is frequently used in
+concert with returning ~Nothing~ from the ~drawPane~ method, but it is
+independent and allows for potentially multiple Widgets to be focusable.  Since
+the Projects Pane is always focusable, it will return its own ~WName~ value as
+the single response.
+
+Similar to drawing then, event handling for the ~Projects~ ~Pane~ consists of
+simply passing the event to the underlying widgets.  As noted above, passing the
+same event to multiple widgets could cause confusion, but in this case the only
+common events are the arrow events, and since the edit widget height is 1 it
+should ignore the vertical arrows that will be used to navigate the list entries.
+The ~handleEditorEvent~ called internally expects a ~BrickEvent~, so the
+~EventType~ must be specified accordingly.  And finally, a couple of helper
+lenses are defined:
+
+  #+begin_src
+  instance Pane WName MyWorkEvent Projects () where
+    data (PaneState Projects MyWorkEvent) = P { pL :: List WName Text
+                                              , pS :: Editor Text WName
+                                              }
+    type (InitConstraints Projects s) = ( HasProjects s )
+    type (DrawConstraints Projects s WName) = ( HasFocus s WName )
+    type (EventType Projects WName MyWorkEvent) = BrickEvent WName MyWorkEvent
+    initPaneState s = let prjs = projects $ getProjects s
+                          pl = list WPList (Vector.fromList (name <$> prjs)) 1
+                          ps = editor WPFilter (Just 1) ""
+                      in P pl ps
+    drawPane ps gs =
+      let isFcsd = gs^.getFocus.to focused == Just WProjList
+          lst = renderList (const txt) isFcsd (pL ps)
+          srch = str "Search: " <+> renderEditor (txt . head) isFcsd (pS ps)
+      in Just $ vBox [ lst, fill ' ', srch ]
+    handlePaneEvent _ ev ps =
+      do ps1 <- case ev of
+                  VtyEvent ev' ->
+                    ps & pList %%~ \w -> nestEventM' w (handleListEvent ev')
+                  _ -> return ps
+         ps2 <- ps1 & pSrch %%~ \w -> nestEventM' w (handleEditorEvent ev)
+         return ps2
+    focusable _ _ = Seq.singleton WProjList
+
+
+  pList :: Lens' (PaneState Projects MyWorkEvent) (List WName Text)
+  pList f ps = (\n -> ps { pL = n }) <$> f (pL ps)
+
+  pSrch :: Lens' (PaneState Projects MyWorkEvent) (Editor Text WName)
+  pSrch f ps = (\n -> ps { pS = n }) <$> f (pS ps)
+  #+end_src
+
+
+**** Project List Pane Notes
+
+At this point, the Project List pane is now fully defined.  In addition, the
+~Pane~ class is /almost/ fully described: there will only be one more member that
+will be introduced later in this development description.
+
+
+*** Operations Pane
+
+The Operations Pane specifies the operations that can be performed and the key
+sequences that initiate them.  This Pane does not itself take focus: the key
+bindings are application global.  It may be however that certain key bindings are
+inactive in the current mode.
+
+**** Initialization
+
+This Pane stores no internal data, so no internal storage or initialization is
+needed.
+
+  #+begin_src
+  instance Pane WName MyWorkEvent OperationsPane () where
+    data (PaneState OperationsPane MyWorkEvent) = Unused
+    initPaneState _ = Unused
+  #+end_src
+
+**** Drawing
+
+This Pane is drawn with the ability to adjust the presented operations to
+indicate if they are active or not.  It must therefore have a class constraint
+that can indicate the active state for those bindings:
+
+  #+begin_src
+  class HasSelection s where
+    selectedProject :: s -> Maybe Project
+  #+end_src
+
+The main instance for this will be for the Project List pane's state:
+
+  #+begin_src
+  {-# LANGUAGE FlexibleInstances #-}
+
+  instance HasSelection (PaneState Projects MyWorkEvent) where
+    selectedProject = fmap snd . listSelectedElement . pL
+  #+end_src
+
+That pane state is not generally available outside the implementation for that
+pane however, so how will this information be available to the Operations Pane?
+The brick-panes library provides an `onPane` lens that can access a particular
+Pane's state from anywhere "above" that Pane in the Panel type list, provided
+that the `PanelOps` constraint can be satisfied.  This can be used to define a
+`HasSelection` instance that will work for the Panel.
+
+  #+begin_src
+  instance ( PanelOps WName MyWorkEvent Projects panes MyWorkCore
+           , HasSelection (PaneState Projects MyWorkEvent)
+           )
+    => HasSelection (Panel WName MyWorkEvent MyWorkCore panes) where
+    selectedProject = selectedProject . view (onPane (Projects []))
+  #+end_src
+
+However, the first attempt to build with this will receive the following error:
+
+  #+begin_example
+  samples/mywork/Main.hs:67:18: error:
+    • No Projects in Panel
+      Add this pane to your Panel (or move it lower)
+      (Possibly driven by DrawConstraints)
+    ...
+  #+end_example
+
+This indicates that the Projects Pane is /above/ the Operations Pane, so the
+latter cannot satisfy the `HasSelection` instance.  To fix this, simply re-order
+the type list for the main state and the initialization operation:
+
+  #+begin_src
+  type MyWorkState = Panel WName MyWorkEvent MyWorkCore
+                     '[ SummaryPane
+                      , OperationsPane
+                      , Projects
+                      ]
+
+  initialState :: MyWorkState
+  initialState = addToPanel Never
+                 $ addToPanel Never
+                 $ addToPanel WhenFocused
+                 $ basePanel initMyWorkCore
+  #+end_src
+
+By "stacking" Panes in the right order in the Panel, most cross-pane dependencies
+can be satisfied.  If there are cases where a total ordering is not possible,
+then state maintained by a Pane may need to be moved into the global base state
+to break the dependency cycle.
+
+Now that the `HasSelection` is defined to determine if a Project is currently
+selected, the draw functionality for the Operations pane can be made sensitive to
+that setting.
+
+  #+begin_src
+  instance Pane WName MyWorkEvent OperationsPane () where
+    data (PaneState OperationsPane MyWorkEvent) = Unused
+    type (DrawConstraints OperationsPane s WName) = ( HasSelection s )
+    initPaneState _ = Unused
+    drawPane _ gs =
+      let projInd = case selectedProject gs of
+                      Nothing -> withAttr (attrName "disabled")
+                      Just _ -> id
+          ops = List.intersperse (fill ' ')
+                [ str "F1-Load/Save"
+                , str "F2-Add Project"
+                , projInd $ str "F3-Add Location"
+                , projInd $ str "F4-Add Note"
+                ]
+      in Just $ vLimit 1 $ str " " <+> hBox ops <+> str " "
+  #+end_src
+
+And the final change is to add the following to the ~myattrs~ map:
+
+  #+begin_src
+  ...
+  , (attrName "disabled", defAttr `withStyle` dim)
+  ...
+  #+end_src
+
+**** Event Handling
+
+The ~OperationsPane~ does not directly handle events: all key bindings it
+describes are handled by global event handling, which will be added later.  The
+`OperationsPane` is now fully defined and no more is needed at the moment.
+
+*** Adding the Location Pane
+
+The next step in the design of the application is to add the ~Location~ Pane,
+which wasn't previously defined.  We'll need to add the Pane to the global Panel
+type and initialization:
+
+  #+begin_src
+  type MyWorkState = Panel WName MyWorkEvent MyWorkCore
+                     '[ SummaryPane
+                      , OperationsPane
+                      , Location
+                      , Projects
+                      ]
+
+  initialState :: MyWorkState
+  initialState = focusRingUpdate myWorkFocusL
+                 $ addToPanel Never
+                 $ addToPanel Never
+                 $ addToPanel WhenFocused
+                 $ addToPanel WhenFocused
+                 $ basePanel initMyWorkCore
+
+  #+end_src
+
+The ~Location~ Pane was added "above" the ~Projects~ pane, because it will need
+to show the Location for the currently selected Pane, which it will need to
+retrieve via the ~HasSelection~ constraint in the same manner as the
+~OperationsPane~.
+
+In addition, there is a new ~focusRingUpdate~ function called to modify the
+initial state.  This function is provided by brick-panes and its responsibility
+is updating the ~FocusRing~ based on the current set of focusable Panes.  Here,
+this adds the ~Location~ and ~Projects~ panes to the focusable list.  The
+~focusRingUpdate~ function should also be called whenever something happens that
+would modify the focus ring (e.g. a modal...).
+
+Rather than showing how each aspect of the ~Location~ Pane is defined, the whole
+thing is presented here at once:
+
+  #+begin_src
+  instance Pane WName MyWorkEvent Location Project where
+    data (PaneState Location MyWorkEvent) = L { lL :: List WName (Text, Maybe Day) }
+    type (InitConstraints Location s) = ( HasSelection s, HasProjects s )
+    type (DrawConstraints Location s WName) = ( HasFocus s WName, HasSelection s )
+    initPaneState gs =
+      let l = L (list WLList mempty 2)
+          update x = do p <- selectedProject gs
+                        prj <- DL.find ((== p) . name) (projects $ getProjects gs)
+                        return $ updatePane prj x
+      in fromMaybe l $ update l
+    drawPane ps gs =
+      let isFcsd = gs^.getFocus.to focused == Just WLocation
+          rndr (l,d) = (txt l
+                        <+> hFill ' '
+                        <+> (str $ maybe "*" show d)
+                       )
+                       <=> str " "
+      in Just $ renderList (const rndr) isFcsd (lL ps)
+    focusable _ ps = focus1If WLocation $ not $ null $ listElements $ lL ps
+    handlePaneEvent _ ev = lList %%~ \w -> nestEventM' w (handleListEvent ev)
+    updatePane prj ps =
+      let ents = [ (location l, locatedOn l) | l <- locations prj ]
+      in L $ listReplace (V.fromList ents) (Just 0) (lL ps)
+
+  lList :: Lens' (PaneState Location MyWorkEvent) (List WName (Text, Maybe Day))
+  lList f ps = (\n -> ps { lL = n }) <$> f (lL ps)
+  #+end_src
+
+In the above, the final method for the ~Pane~ is introduced: the ~updatePane~
+method.  In addition, the 4th parameter is specified with a type, which specifies
+the type of the ~updatePane~ method's first argument.  This method is called
+externally with the specified argument whenever the Pane's internal state should
+be updated.  Here, it is intended to be called with the ~Project~ for which the
+~Location~ pane should show the locations, and it will update the internal
+~Brick.Widges.List~ with those locations.  This is also called directly from the
+~initPaneState~ when there is a selection at initialization time.
+
+Also of interest is the new ~focus1If~ function called by the ~focusable~ method.
+This brick-panes function is a convenience helper that returns the first argument
+in a single-entry Sequence if the second argument is true.  The automatic call of
+~focusRingUpdate~ performed internally by the ~Panel~ at the end of handling each
+event will use the return values of the ~focusable~ methods to update the
+~FocusRing~ appropriately.  The ~focus1If~ helper is being used to indicate that
+the ~Location~ Pane should not receive focus unless there are actual locations
+being displayed.
+
+
+Note that a ~WLList~ value was added to the ~WName~ type as well, and the main
+~drawMyWork~ is updated to draw the Location pane:
+
+  #+begin_src
+  drawMyWork mws =
+    [
+      joinBorders
+      $ withBorderStyle unicode
+      $ borderWithLabel  (str $ " mywork " <> showVersion version <> " ")
+      $ vBox $ catMaybes
+      [
+        panelDraw SummaryPane mws
+      , Just hBorder
+      , Just $ hBox $ catMaybes
+        [ hLimitPercent 20 <$> panelDraw (mws ^. onBaseState . to myProjects) mws
+        , Just vBorder
+        , panelDraw (Location "" Nothing mempty) mws
+        ]
+      , Just hBorder
+      , panelDraw OperationsPane mws
+      ]
+    ]
+  #+end_src
+
+The ~Location~ Pane's ~updatePane~ should be called whenever the ~Projects~ Pane
+selection is changed, to update the Locations displayed.  This is handled by
+extending the application's primary event handler to detect these changes and
+explicitly call the ~updatePane~ as seen in the modified excerpt here:
+
+  #+begin_src
+    ...
+    -- Otherwise, allow the Panes in the Panel to handle the event
+    ev -> do state0 <- get
+             let proj0 = selectedProject state0
+             state <- handleFocusAndPanelEvents myWorkFocusL state0 ev
+             let mprj = do pnm <- selectedProject state
+                           guard (Just pnm /= proj0)
+                           Data.List.find ((== pnm) . name)
+                                          (projects $ getProjects state)
+             let state' =
+                   case mprj of
+                     Just p -> state & onPane locationPane %~ updatePane p
+                     _ -> state
+             put state'
+  #+end_src
+
+
+**** Location Pane Notes
+
+At this point, the development of the application is progressing nicely.  Each
+additional Pane is defined with its own isolated specification, information
+exchanged with other Panes is explicit and controlled by the Constraints, and
+global application changes needed are just to ensure that the Pane is added to
+the initialization operations and type, ensure it is part of the drawing code,
+and add any /special/ event handling needed for that Pane.
+
+Most of the rest of the development of the mywork application will follow this
+pattern, but it's worth looking at one additional aspect: modal panes.
+
+
+*** File Load/Save Pane
+
+The File Load/Save (a.k.a. ~FileMgr~) Pane is somewhat different from the
+previous panes in that it is a modal pane: it is invisible until activated, and
+while activated it holds the focus until de-activated.
+
+The design and appearance of the ~FileMgr~ Pane will be a centered modal window,
+displaying a Brick ~FileBrowser~ Widget at the top, help information below that,
+and a ~Save~ button at the bottom.
+
+The ~Save~ button will be selectable via the
+~Tab~/~Shift-Tab~ events, and hitting ~Space~ or ~Return~ while the button is
+selected will perform the save action on the to the currently selected file in
+the file browser.
+
+When the ~FileBrowser~ Widget is selected, normal browsing can be performed, and
+~Return~ will load the currently selected file and dismiss the ~FileMgr~ modal
+pane, whereas ~ESC~ at any point will dismiss the ~FileMgr~ modal pane without
+making any changes.
+
+# Support for a modal Pane such as this mainly requires a flag in the global base state indicating whether the pane is active or not.
+
+**** Pane Implementation
+
+The FileMgr Pane itself is implemented in the manner we have come to expect,
+although there are a couple of adjustments:
+
+  #+begin_src
+  data FileMgrPane = FileMgrPane
+
+  instance Pane WName MyWorkEvent FileMgrPane Bool where
+    data (PaneState FileMgrPane MyWorkEvent) =
+      FB { fB :: Maybe (FileBrowser WName)
+           -- ^ A Nothing value indicates the modal is not currently active
+         , myProjects :: Projects
+           -- ^ Current loaded set of projects
+         , newProjects :: Bool
+           -- ^ True when myProjects has been updated; clear this via updatePane
+         }
+    type (InitConstraints FileMgrPane s) = ()
+    type (DrawConstraints FileMgrPane s WName) = ( HasFocus s WName )
+    type (EventConstraints FileMgrPane e) = ( HasFocus e WName )
+    initPaneState gs = FB Nothing (Projects mempty) False
+    drawPane ps gs = drawFB gs <$> fB ps
+    focusable _ ps = case fB ps of
+                       Nothing -> mempty
+                       Just _ -> Seq.fromList [ WFBrowser, WFSaveBtn ]
+    handlePaneEvent bs ev ts =
+      let isSearching = maybe False fileBrowserIsSearching (ts^.fBrowser)
+      in case ev of
+        Vty.EvKey Vty.KEsc [] | not isSearching -> return $ ts & fBrowser .~ Nothing
+        _ -> case bs^.getFocus of
+               Focused (Just WFBrowser) -> handleFileLoadEvent ev ts
+               Focused (Just WFSaveBtn) -> handleFileSaveEvent ev ts
+               _ -> return ts
+    updatePane newFlag ps = ps { newProjects = newFlag }
+
+  fBrowser :: Lens' (PaneState FileMgrPane MyWorkEvent) (Maybe (FileBrowser WName))
+  fBrowser f ps = (\n -> ps { fB = n }) <$> f (fB ps)
+
+  myProjectsL :: Lens' (PaneState FileMgrPane MyWorkEvent) Projects
+  myProjectsL f wc = (\n -> wc { myProjects = n }) <$> f (myProjects wc)
+  #+end_src
+
+  The first observation is that the actual ~Projects~ list is moved here from the
+  global base state.  This is to allow the ~FileMgr~ to easily access and replace
+  the ~Projects~ data when a file is loaded or saved.
+
+  There is also a flag that indicates when the ~Projects~ has been changed.  This
+  will be needed to inform the ~Projects~ Pane that it needs to update its list
+  values.  The flag is set internally when a new set of Projects is loaded, and
+  the ~updatePane~ can be called to clear the flag once the ~Projects~ Pane has
+  been updated.
+
+  The ~focusable~ is also modified to return a list of the two sub-widgets.  This
+  is to support the automatic selection of active widget via the
+  ~Tab~/~Shift-Tab~ event handling provided by the ~Panel~ implementation.  (The
+  ~WName~ datatype is extended in the obvious manner with these new
+  constructors.)
+
+  To support the export of the new ~newProjects~ flag, the ~HasProjects~ class is
+  slighly updated, and provide an instance for this Pane and any super-Pane
+  types, but not for the base global state.
+
+  #+begin_src
+  class HasProjects s where
+    getProjects :: s -> (Bool, Projects)
+
+  instance ( PanelOps WName MyWorkEvent FileMgrPane panes MyWorkCore
+           , HasProjects (PaneState FileMgrPane MyWorkEvent)
+           )
+    => HasProjects (Panel WName MyWorkEvent MyWorkCore panes) where
+    getProjects = getProjects . view (onPane FileMgrPane)
+
+  instance HasProjects (PaneState FileMgrPane MyWorkEvent) where
+    getProjects ps = (newProjects ps, myProjects ps)
+  #+end_src
+
+  Various miscellaneous and obvious adjustments will need to be made to
+  accomodate the change in return value; these are not shown here.
+
+  The application type and initialization are updated to include the new Pane,
+  with the indication that the pane should receive ~Events~ only when
+  modally-active:
+
+  #+begin_src
+  type MyWorkState = Panel WName MyWorkEvent MyWorkCore
+                     '[ SummaryPane
+                      , OperationsPane
+                      , Location
+                      , Projects
+                      , FileMgrPane
+                      ]
+
+  initialState :: MyWorkState
+  initialState = focusRingUpdate myWorkFocusL
+                 $ addToPanel Never
+                 $ addToPanel Never
+                 $ addToPanel WhenFocused
+                 $ addToPanel WhenFocused
+                 $ addToPanel (WhenFocusedModal Nothing)
+                 $ basePanel initMyWorkCore
+  #+end_src
+
+  The drawing and handling functions are also not shown here; their
+  implementation is relatively straightforward and doesn't reveal any new
+  brick-pane concepts.  When a file is actually loaded, the handler will update
+  the ~myProjects~ field with the loaded data and set the ~newProjects~ to
+  ~True~.
+
+  Of note is the initialization: the Brick ~FileBrowser~ initialization must be
+  performed in the ~IO~ monad.  Conveniently, this ~Pane~ is modal and not
+  displayed by default, so there is an ~Event~ which causes it to be displayed
+  and which can provide the monadic context for the initialization in the global
+  event handler:
+
+  #+begin_src
+    ...
+    VtyEvent (Vty.EvKey (Vty.KFun 1) []) -> do
+      fmgr <- liftIO initFileMgr
+      modify ((focusRingUpdate myWorkFocusL) . (onPane FileMgrPane .~ fmgr))
+    -- Otherwise, allow the Panes in the Panel to handle the event
+    ev -> do state0 <- get
+             ...
+  #+end_src
+
+  Note here the call to ~focusRingUpdate~: the ~Panel~ event handler
+  automatically calls this, but that handler is not used in this situation, so
+  the ~FocusRing~ should be explicitly updated with this function.  If this
+  update is omitted, the modal will not visibly show the focused state until the
+  /next/ event (that calls the ~Panel~'s event handler) is processed.
+
+  In the ~FileMgr~ Pane implementation, the ~initFileMgr~ function is defined:
+
+  #+begin_src
+  initFileMgr :: IO (PaneState FileMgrPane MyWorkEvent)
+  initFileMgr = do
+    fb <- newFileBrowser selectNonDirectories WFBrowser Nothing
+    return $ initPaneState fb & fBrowser .~ Just fb
+  #+end_src
+
+  Also in the global event handler, the new projects flag is checked, and if it
+  is ~True~, it is reset to ~False~ and the ~Projects~ Pane is notified of the
+  new ~Projects~ data:
+
+  #+begin_src
+    ev -> do proj0 <- gets selectedProject
+             get >>= (\s -> handleFocusAndPanelEvents myWorkFocusL s ev) >>= put
+             (new,prjs) <- gets getProjects
+             when new $
+               modify $ \s -> s
+                              & focusRingUpdate myWorkFocusL
+                              & onPane projectsPane %~ updatePane prjs
+                              & onPane FileMgrPane %~ updatePane False
+             ...
+  #+end_src
+
+  This invokes the ~Projects~ Pane ~updatePane~ method which is added to support
+  updating the displayed projects based on the new data:
+
+  #+begin_src
+  instance Pane WName MyWorkEvent Projects Projects where
+    ...
+    updatePane newprjs =
+      (pList %~ listReplace (Vector.fromList (name <$> projects newprjs)) (Just 0))
+      .
+      (pSrch . editContentsL %~ Text.Zipper.clearZipper)
+  #+end_src
+
+  Finally, the draw function is modified to draw the modal (if drawable) before
+  the other Panes, drawing those Panes with the ~"disabled"~ attribute if the
+  modal is active.
+
+  #+begin_src
+drawMyWork mws =
+  let mainPanes =
+        [
+          borderWithLabel  (str $ " mywork " <> showVersion version <> " ")
+          $ vBox $ catMaybes
+          [
+            panelDraw SummaryPane mws
+            ...
+          ]
+        ]
+      allPanes = catMaybes [ panelDraw FileMgrPane mws
+                           ]
+                 <> mainPanes
+      disableLower = \case
+        (m:ls) -> m : (withDefAttr (attrName "disabled") <$> ls)
+        o -> o
+  in joinBorders . withBorderStyle unicode <$> disableLower allPanes
+  #+end_src
+  
+**** FileMgr Pane Notes
+
+  Not all of the details of the ~FileMgr~ modal Pane implementation are shown
+  above, but the remainder is relatively mechanical.  The ~samples/mywork~
+  directory can be consulted for the more complete implementation details.
+
+** Closing Notes
+
+  At this point, all of the functionality provided by the brick-panes library
+  has been introduced, along with examples of code utilizing that functionality.
+  We have seen how to add a new Pane, including modal panes, and how to
+  coordinate both information sharing and isolation between the various Panes.
+
+  Rather than pedantically walk through the remainder of the creation of the
+  ~mywork~ application implementation, the completion and extensions of this
+  sample application are left as exercises for the reader:
+
+  * Implement the Notes Pane, displaying the Notes associated with the selected
+    Location.
+
+  * Implement the Add Project operation
+
+  * Implement the Add Location operation
+
+  * Implement the Add Notes operation
+
+  * Add handling for the Projects Search box, modifying the display of the listed
+    Projects based on the entry in the Search box.
+
+  * Add error handling and display (e.g. loading invalid files)
+
+  * Add display of additional Project information (description, language, role,
+    etc.).
+
+
+  If this sample application is intriguing as a potentially useful application
+  for daily use, a much more sophisticated and complete version is available from
+  Hackage or https://github.com/kquick/mywork.
+
+* FAQ
+
+ * Why not just use Brick Widgets?
+
+   Brick Widgets are a great abstraction, but they are a fairly low-level
+   abstraction that don't inherently support multiple, focusable sub-components
+   and a generic abstraction interface.
+
