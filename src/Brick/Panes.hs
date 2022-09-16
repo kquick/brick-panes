@@ -33,6 +33,7 @@ module Brick.Panes
     -- ** Event Handling
   , EventConstraints
   , EventType
+  , DispatchEvent
   , focusable
   , handlePaneEvent
   , updatePane
@@ -57,8 +58,7 @@ module Brick.Panes
     -- ** Focus and Event management
   , handleFocusAndPanelEvents
     -- ** Access and operations
-  , PanelOps
-  , panelState
+  , PanelOps(..)
   )
 where
 
@@ -194,7 +194,9 @@ newtype Focused n = Focused { focused :: Maybe n
 
 
 -- | The 'DispatchEvent' class is used to determine which type of event to
--- dispatch to a 'Pane' by selecting on the 'EventType pane n'.
+-- dispatch to a 'Pane' by selecting on the @'EventType' pane n@.  This is used
+-- internally in the brick-panes implementation and client code does not need to
+-- explicitly specify instances of this class.
 class DispatchEvent n appev pane evtype where
   dispEv :: ( Pane n appev pane updateType
             , EventConstraints pane base
@@ -230,7 +232,7 @@ instance DispatchEvent n appev pane Vty.Event where
 -- 'Panel' container is not constrained in this manner and each method could have
 -- a different argument.  For the Panel, the 'state' is typically the Panel
 -- "beneath" the current Pane, which is the aggregate of the base state and all
--- Panes added before the current PanelWith pane.
+-- Panes added before the current pane.
 data Panel n appev state (panes :: [Type]) where
   Panel :: state -> Panel n appev state '[]
   PanelWith :: ( Pane n appev pane u
@@ -382,10 +384,9 @@ panelDraw :: forall pane n appev s panes u .
 panelDraw panel = drawPane (panelState @pane panel) panel
 
 
--- | Called to handle events for the entire 'Panel'.  The current focused 'Pane'
--- is determined and that Pane's handler is called (based on the 'Widget' name
--- for that Pane).  If a 'Pane' has no associated 'Widget' name (the 'PanelWith'
--- pane value is 'Nothing') then its handler is never called.
+-- | Called to dispatch an events to the focused Pane in the Panel as determined
+-- by matching the Widget names returned by the Pane's 'focusable' with the
+-- current FocusRing focus target.
 handlePanelEvents :: Eq n
                   => Panel n appev s panes
                   -> BrickEvent n appev
