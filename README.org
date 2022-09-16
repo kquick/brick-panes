@@ -222,8 +222,8 @@ panes, and then come back later to add the additional panes.
   #+begin_src haskell
   {-# LANGUAGE MultiParamTypeClasses #-}
 
-  data SummaryPane = SummaryPane
-  data OperationsPane = OperationsPane
+  data SummaryPane
+  data OperationsPane
 
   instance Pane WName MyWorkEvent SummaryPane updateType where ...
   instance Pane WName MyWorkEvent Projects updateType where ...
@@ -323,11 +323,11 @@ but drawing Panes in the Panel can be done very generically:
       $ borderWithLabel (str $ " mywork " <> showVersion version <> " ")
       $ vBox $ catMaybes
       [
-        panelDraw SummaryPane mws
+        panelDraw @SummaryPane mws
       , Just hBorder
-      , panelDraw (mws ^. onBaseState . to myProjects) mws
+      , panelDraw @Projects mws
       , Just hBorder
-      , panelDraw OperationsPane mws
+      , panelDraw @OperationsPane mws
       ]
     ]
   #+end_src
@@ -797,11 +797,11 @@ that the `PanelOps` constraint can be satisfied.  This can be used to define a
 `HasSelection` instance that will work for the Panel.
 
   #+begin_src haskell
-  instance ( PanelOps WName MyWorkEvent Projects panes MyWorkCore
+  instance ( PanelOps Projects WName MyWorkEvent panes MyWorkCore
            , HasSelection (PaneState Projects MyWorkEvent)
            )
     => HasSelection (Panel WName MyWorkEvent MyWorkCore panes) where
-    selectedProject = selectedProject . view (onPane (Projects []))
+    selectedProject = selectedProject . view (onPane @Projects)
   #+end_src
 
 However, the first attempt to build with this will receive the following error:
@@ -971,15 +971,15 @@ Note that a ~WLList~ value was added to the ~WName~ type as well, and the main
       $ borderWithLabel  (str $ " mywork " <> showVersion version <> " ")
       $ vBox $ catMaybes
       [
-        panelDraw SummaryPane mws
+        panelDraw @SummaryPane mws
       , Just hBorder
       , Just $ hBox $ catMaybes
-        [ hLimitPercent 20 <$> panelDraw (mws ^. onBaseState . to myProjects) mws
+        [ hLimitPercent 20 <$> panelDraw @Projects mws
         , Just vBorder
-        , panelDraw (Location "" Nothing mempty) mws
+        , panelDraw @Location mws
         ]
       , Just hBorder
-      , panelDraw OperationsPane mws
+      , panelDraw @OperationsPane mws
       ]
     ]
   #+end_src
@@ -1001,7 +1001,7 @@ explicitly call the ~updatePane~ as seen in the modified excerpt here:
                                           (projects $ getProjects state)
              let state' =
                    case mprj of
-                     Just p -> state & onPane locationPane %~ updatePane p
+                     Just p -> state & onPane @Location %~ updatePane p
                      _ -> state
              put state'
   #+end_src
@@ -1048,7 +1048,7 @@ The FileMgr Pane itself is implemented in the manner we have come to expect,
 although there are a couple of adjustments:
 
   #+begin_src haskell
-  data FileMgrPane = FileMgrPane
+  data FileMgrPane
 
   instance Pane WName MyWorkEvent FileMgrPane Bool where
     data (PaneState FileMgrPane MyWorkEvent) =
@@ -1108,11 +1108,11 @@ although there are a couple of adjustments:
   class HasProjects s where
     getProjects :: s -> (Bool, Projects)
 
-  instance ( PanelOps WName MyWorkEvent FileMgrPane panes MyWorkCore
+  instance ( PanelOps FileMgrPane WName MyWorkEvent panes MyWorkCore
            , HasProjects (PaneState FileMgrPane MyWorkEvent)
            )
     => HasProjects (Panel WName MyWorkEvent MyWorkCore panes) where
-    getProjects = getProjects . view (onPane FileMgrPane)
+    getProjects = getProjects . view (onPane @FileMgrPane)
 
   instance HasProjects (PaneState FileMgrPane MyWorkEvent) where
     getProjects ps = (newProjects ps, myProjects ps)
@@ -1160,7 +1160,7 @@ although there are a couple of adjustments:
     ...
     VtyEvent (Vty.EvKey (Vty.KFun 1) []) -> do
       fmgr <- liftIO initFileMgr
-      modify ((focusRingUpdate myWorkFocusL) . (onPane FileMgrPane .~ fmgr))
+      modify ((focusRingUpdate myWorkFocusL) . (onPane @FileMgrPane .~ fmgr))
     -- Otherwise, allow the Panes in the Panel to handle the event
     ev -> do state0 <- get
              ...
@@ -1192,8 +1192,8 @@ although there are a couple of adjustments:
              when new $
                modify $ \s -> s
                               & focusRingUpdate myWorkFocusL
-                              & onPane projectsPane %~ updatePane prjs
-                              & onPane FileMgrPane %~ updatePane False
+                              & onPane @Projects %~ updatePane prjs
+                              & onPane @FileMgrPane %~ updatePane False
              ...
   #+end_src
 
@@ -1213,22 +1213,22 @@ although there are a couple of adjustments:
   the other Panes, drawing those Panes with the ~"disabled"~ attribute if the
   modal is active.
 
-  #+begin_src haskell
-  drawMyWork mws =
-    let mainPanes =
+  #+begin_src
+drawMyWork mws =
+  let mainPanes =
+        [
+          borderWithLabel  (str $ " mywork " <> showVersion version <> " ")
+          $ vBox $ catMaybes
           [
-            borderWithLabel  (str $ " mywork " <> showVersion version <> " ")
-            $ vBox $ catMaybes
-            [
-              panelDraw SummaryPane mws
-              ...
-            ]
+            panelDraw @SummaryPane mws
+            ...
           ]
-        allPanes = catMaybes [ panelDraw FileMgrPane mws ] <> mainPanes
-        disableLower = \case
-          (m:ls) -> m : (withDefAttr (attrName "disabled") <$> ls)
-          o -> o
-    in joinBorders . withBorderStyle unicode <$> disableLower allPanes
+        ]
+      allPanes = catMaybes [ panelDraw @FileMgrPane mws ] <> mainPanes
+      disableLower = \case
+        (m:ls) -> m : (withDefAttr (attrName "disabled") <$> ls)
+        o -> o
+  in joinBorders . withBorderStyle unicode <$> disableLower allPanes
   #+end_src
   
 **** FileMgr Pane Notes

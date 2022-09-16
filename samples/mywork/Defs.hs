@@ -3,6 +3,7 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE StandaloneDeriving #-}
+{-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE UndecidableInstances #-}
 
 module Defs where
@@ -98,8 +99,8 @@ instance HasFocus MyWorkCore WName where
 class HasSelection s where
   selectedProject :: s -> Maybe Text
 
-instance ( PanelOps WName MyWorkEvent Projects panes MyWorkCore
+instance ( PanelOps Projects WName MyWorkEvent panes MyWorkCore
          , HasSelection (PaneState Projects MyWorkEvent)
          )
   => HasSelection (Panel WName MyWorkEvent MyWorkCore panes) where
-  selectedProject = selectedProject . view (onPane (Projects []))
+  selectedProject = selectedProject . view (onPane @Projects)

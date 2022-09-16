@@ -3,11 +3,7 @@
 {-# LANGUAGE TypeSynonymInstances #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 
-module Panes.Location
-  (
-    locationPane
-  )
-where
+module Panes.Location () where
 
 import           Brick hiding ( Location )
 import           Brick.Panes
@@ -50,7 +46,3 @@ instance Pane WName MyWorkEvent Location Project where
 
 lList :: Lens' (PaneState Location MyWorkEvent) (List WName (Text, Maybe Day))
 lList f ps = (\n -> ps { lL = n }) <$> f (lL ps)
-
-
-locationPane :: Location
-locationPane = undefined

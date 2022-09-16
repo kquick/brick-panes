@@ -5,11 +5,7 @@
 {-# LANGUAGE TypeSynonymInstances #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 
-module Panes.Projects
-  (
-    projectsPane
-  )
-where
+module Panes.Projects () where
 
 import           Brick
 import           Brick.Panes
@@ -63,7 +59,3 @@ pSrch f ps = (\n -> ps { pS = n }) <$> f (pS ps)
 
 instance HasSelection (PaneState Projects MyWorkEvent) where
   selectedProject = fmap snd . listSelectedElement . pL
-
-
-projectsPane :: Projects
-projectsPane = undefined

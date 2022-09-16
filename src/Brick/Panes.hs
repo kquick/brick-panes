@@ -1,3 +1,4 @@
+{-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE FlexibleContexts #-}
@@ -8,6 +9,7 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE UndecidableInstances #-}
@@ -178,11 +180,17 @@ focus1If n b = if b then Seq.singleton n else mempty
 -- class is frequently specified as one of the constraints for the
 -- 'DrawConstraints' or 'EventConstraints' of a 'Pane'.
 class HasFocus b n | b -> n where
+  -- | Provides a lens from the primary type to the 'Focused' type, which
+  -- specifies the current focused element (if any).
   getFocus :: Lens' b (Focused n)
   -- By default, nothing has Focus
   getFocus f x = const x <$> f (Focused Nothing)
 
-newtype Focused n = Focused { focused :: Maybe n }
+-- | This is a newtype to wrap the identification of the current focused element
+-- (if any).
+newtype Focused n = Focused { focused :: Maybe n
+                              -- ^ The current focused element or 'Nothing'.
+                            }
 
 
 -- | The 'DispatchEvent' class is used to determine which type of event to
@@ -285,11 +293,13 @@ onBaseState :: Lens' (Panel n appev state panes) state
 onBaseState f (Panel s) = Panel <$> f s
 onBaseState f (PanelWith p n i) = PanelWith p n <$> onBaseState f i
 
--- | This is a lens providing access to the PaneState for a specific
--- Pane in the Panel.
-onPane :: PanelOps n appev pane panes state
-       => pane -> Lens' (Panel n appev state panes) (PaneState pane appev)
-onPane p = lens (panelState p) (panelStateUpdate p)
+-- | This is a lens providing access to the PaneState for a specific Pane in the
+-- Panel.  The Pane is typically specified via a type application
+-- (e.g. @@MyPane@).
+onPane :: forall pane n appev state panes .
+          PanelOps pane n appev panes state
+       => Lens' (Panel n appev state panes) (PaneState pane appev)
+onPane = lens (panelState @pane) (panelStateUpdate @pane)
 
 
 -- -- | This can be used to get the inner Pane from the current Pane in the state.
@@ -306,7 +316,7 @@ onPane p = lens (panelState p) (panelStateUpdate p)
 -- The user of this library will not need to develop new instances of this class:
 -- the instances defined internally are sufficient.  Users may need to specify
 -- 'PanelOps' constraints on various functions.
-class PanelOps n appev pane panes s | pane -> n where
+class PanelOps pane n appev panes s | pane -> n where
 
   -- | This is called to pass the VTY Event to the specified Pane's
   -- handler with a Panel.
@@ -314,28 +324,30 @@ class PanelOps n appev pane panes s | pane -> n where
                    => s -> pane -> Panel n appev s panes -> BrickEvent n appev
                    -> EventM n es (Panel n appev s panes)
 
-  -- | This is used to obtain the state of a specific Pane within the Panel.
-  panelState :: pane -> Panel n appev s panes -> PaneState pane appev
+  -- | This is used to obtain the state of a specific Pane within the Panel.  The
+  -- pane is usually specified by a type application (e.g. @@MyPane@).
+  panelState :: Panel n appev s panes -> PaneState pane appev
 
-  -- | This is used to update the state of a specific Pane within the Panel.
-  panelStateUpdate :: pane -> Panel n appev s panes -> PaneState pane appev
+  -- | This is used to update the state of a specific Pane within the Panel. The
+  -- pane is usually specified by a type application (e.g. @@MyPane@).
+  panelStateUpdate :: Panel n appev s panes -> PaneState pane appev
                    -> Panel n appev s panes
 
 
-instance (Pane n appev pane u) => PanelOps n appev pane (pane ': panes) s where
+instance (Pane n appev pane u) => PanelOps pane n appev (pane ': panes) s where
   handlePanelEvent s _p (PanelWith pd n r) ev =
     (\pd' -> PanelWith pd' n r) <$> dispEv Refl s ev pd
-  panelState _ (PanelWith pd _ _) = pd
-  panelStateUpdate _ (PanelWith _pd n r) = \pd' -> PanelWith pd' n r
+  panelState (PanelWith pd _ _) = pd
+  panelStateUpdate (PanelWith _pd n r) = \pd' -> PanelWith pd' n r
 
 
-instance {-# OVERLAPPABLE #-} (PanelOps n appev pane panes s) =>
-  PanelOps n appev pane (o ': panes) s where
+instance {-# OVERLAPPABLE #-} (PanelOps pane n appev panes s) =>
+  PanelOps pane n appev (o ': panes) s where
   handlePanelEvent s p (PanelWith pd n r) ev =
     PanelWith pd n <$> handlePanelEvent s p r ev
-  panelState p (PanelWith _ _ r) = panelState p r
-  panelStateUpdate p (PanelWith pd n r) =
-    \pd' -> PanelWith pd n $ panelStateUpdate p r pd'
+  panelState (PanelWith _ _ r) = panelState r
+  panelStateUpdate (PanelWith pd n r) =
+    \pd' -> PanelWith pd n $ panelStateUpdate r pd'
 
 
 instance ( TypeError
@@ -345,7 +357,7 @@ instance ( TypeError
            )
          , Pane n appev pane u
          )
-  => PanelOps n appev pane '[] s where
+  => PanelOps pane n appev '[] s where
   handlePanelEvent = absurd (undefined :: Void)
   panelState = absurd (undefined :: Void)
   panelStateUpdate = absurd (undefined :: Void)
@@ -353,13 +365,14 @@ instance ( TypeError
 
 -- | Called to draw a specific pane in the panel.  Typically invoked from the
 -- applications' global drawing function.
-panelDraw :: ( DrawConstraints pane (Panel n appev s panes) n
-             , PanelOps n appev pane panes s
+panelDraw :: forall pane n appev s panes u .
+             ( DrawConstraints pane (Panel n appev s panes) n
+             , PanelOps pane n appev panes s
              , Pane n appev pane u
              , Eq n
              )
-          => pane -> Panel n appev s panes -> Maybe (Widget n)
-panelDraw p panel = drawPane (panelState p panel) panel
+          => Panel n appev s panes -> Maybe (Widget n)
+panelDraw panel = drawPane (panelState @pane panel) panel
 
 
 -- | Called to handle events for the entire 'Panel'.  The current focused 'Pane'
