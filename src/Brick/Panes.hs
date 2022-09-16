@@ -48,7 +48,7 @@ module Brick.Panes
   , Panel
   , basePanel
   , addToPanel
-  , PaneFocus(Always, Never, WhenFocused, WhenFocusedModal)
+  , PaneFocus(..)
     -- ** Pane and base state access
   , onPane
   , onBaseState
@@ -221,7 +221,7 @@ instance DispatchEvent n appev pane Vty.Event where
 -- Brick application, independent of the various Pane data.  Each 'Pane'
 -- has an instance that defines its 'PaneState', which is associated
 -- here with a potential Widget name (allowing selected actions; see
--- 'handlePanelEvents').
+-- 'handleFocusAndPanelEvents').
 --
 -- The 'Panel' type closes over the 'state' type argument, which is used for all
 -- three of the 'Pane' constraints ('DrawConstraints', 'EventConstraints', and
@@ -277,8 +277,15 @@ data PaneFocus n =
   --   all non-modal focus candidates (it is expected that there is only one
   --   modal, but this is not required).
   | WhenFocusedModal (Maybe (FocusRing n))
+  -- | Indicates that the pane should receive events when the current focus is
+  -- equal to a 'focusable' return from the Pane, and that this should block all
+  -- non-modal focus candidates, just as with 'WhenFocusedModal'.  However, this
+  -- also sends *all* events to the modal Pane instead of the normal 'Panel'
+  -- handling of events (e.g.  @TAB@/@Shift-TAB@).
+  | WhenFocusedModalHandlingAllEvents (Maybe (FocusRing n))
   -- (FocusRing n) on WhenFocusedModal is the previous focus ring
   -- before the Modal was entered; used to restore on exit.
+
 
 
 -- | If the base state provides Focus information, then the Panel can provide
@@ -407,26 +414,48 @@ handlePanelEvents panel ev (Focused focus) =
                      WhenFocusedModal _ -> if fcs `elem` focusable r pd
                                            then handleIt
                                            else skipIt
+                     WhenFocusedModalHandlingAllEvents _ ->
+                       if fcs `elem` focusable r pd
+                       then handleIt
+                       else skipIt
             PanelWith pd' pf <$> go fcs r evnt
 
 
--- | This is a helper function adding management of the focus for a 'Panel'
--- (using Tab and Shift-Tab to cycle between panes accepting input) in addition
--- to providing the same functionality as 'handlePanelEvents' for focused 'Pane'
--- event dispatching.
+-- | Called to handle events for the entire 'Panel', including focus-changing
+-- events.  The current focused 'Pane' is determined and that Pane's handler is
+-- called (based on the 'Widget' names returned as 'focusable' for that Pane).
+-- If a Pane has no associated Widget name (the 'PaneFocus' value is specified as
+-- 'Nothing' when adding the Pane to the Panel) then its handler is never called.
+--
+-- This function manages updating the focus when @Tab@ or @Shift-Tab@ is
+-- selected, except when the currently focused pane was created with the
+-- 'WhenFocusedModalHandlingAllEvents', in which case all events are passed
+-- through to the Pane.
 handleFocusAndPanelEvents :: Eq n
                           => Ord n
                           => Lens' (Panel n appev s panes) (FocusRing n)
                           -> Panel n appev s panes
                           -> BrickEvent n appev
                           -> EventM n es (Panel n appev s panes)
-handleFocusAndPanelEvents focusL panel = \case
-  VtyEvent (Vty.EvKey (Vty.KChar '\t') []) ->
-    return $ panel & focusL %~ focusNext
-  VtyEvent (Vty.EvKey Vty.KBackTab []) ->
-    return $ panel & focusL %~ focusPrev
-  ev -> let fcs = Focused $ focusGetCurrent (panel ^. focusL)
-        in focusRingUpdate focusL <$> handlePanelEvents panel ev fcs
+handleFocusAndPanelEvents focusL panel =
+  let fcs = focusGetCurrent (panel ^. focusL)
+      doPanelEvHandling = case fcs of
+                            Nothing -> True
+                            Just curFcs -> chkEv curFcs panel
+  in \case
+    VtyEvent (Vty.EvKey (Vty.KChar '\t') []) | doPanelEvHandling ->
+      return $ panel & focusL %~ focusNext
+    VtyEvent (Vty.EvKey Vty.KBackTab []) | doPanelEvHandling ->
+      return $ panel & focusL %~ focusPrev
+    panelEv ->
+      focusRingUpdate focusL <$> handlePanelEvents panel panelEv (Focused fcs)
+  where
+    chkEv :: Eq n => n -> Panel n appev s panes -> Bool
+    chkEv curFcs = \case
+                  Panel {} -> True
+                  PanelWith pd (WhenFocusedModalHandlingAllEvents _) r ->
+                    (not $ curFcs `elem` focusable r pd) && chkEv curFcs r
+                  PanelWith _ _ r -> chkEv curFcs r
 
 
 -- | When the Panel is managing focus events (e.g. when using
@@ -492,15 +521,34 @@ subFocusable focusL base = \case
               in (fst ns, pf >< snd ns)
     in (PanelWith pd WhenFocused <$> i', ns')
   PanelWith pd (WhenFocusedModal pf) r ->
-    let ((f, i'), ns) = subFocusable focusL base r
-        fnms = focusable r pd
-        fpred = not $ Seq.null fnms
-        ns' =  (fnms >< fst ns, snd ns)
-        f' = if fpred then Nothing else f <|> (focusRingToList <$> pf)
-        pf' = if fpred then pf <|> Just (base^.focusL) else Nothing
+    let (f', pf', i', ns') = goModal focusL base pd pf r
     in ((f', PanelWith pd (WhenFocusedModal pf') i'), ns')
+  PanelWith pd (WhenFocusedModalHandlingAllEvents pf) r ->
+    let (f', pf', i', ns') = goModal focusL base pd pf r
+    in ((f', PanelWith pd (WhenFocusedModalHandlingAllEvents pf') i'), ns')
   PanelWith x y r -> let (i', ns) = subFocusable focusL base r
                      in (PanelWith x y <$> i', ns)
+
+goModal :: fullpanel ~ Panel n appev s panes
+        => rempanel ~ Panel n appev s rempanes
+        => EventConstraints pane rempanel
+        => Pane n appev pane updateType
+        => Eq n
+        => Lens' fullpanel (FocusRing n)
+        -> fullpanel
+        -> PaneState pane appev
+        -> Maybe (FocusRing n)
+        -> rempanel
+        -> (Maybe [n], Maybe (FocusRing n), rempanel, (Seq n, Seq n))
+goModal focusL base pd pf r =
+      let ((f, i'), ns) = subFocusable focusL base r
+          fnms = focusable r pd
+          fpred = not $ Seq.null fnms
+          ns' =  (fnms >< fst ns, snd ns)
+          f' = if fpred then Nothing else f <|> (focusRingToList <$> pf)
+          pf' = if fpred then pf <|> Just (base^.focusL) else Nothing
+      in (f', pf', i', ns')
+
 
 
 -- | This returns all shrl instances of the input list.
