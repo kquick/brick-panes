@@ -42,7 +42,7 @@ library
                     , lens
                     , vty >= 5.36 && < 5.37
 
-executable mywork
+executable mywork-example
     import:           settings
     default-language: Haskell2010
     hs-source-dirs:   samples/mywork

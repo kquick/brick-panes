@@ -45,13 +45,21 @@ To introduce the Panes library in a manner that reveals the motivation and
 interaction in a layered approach, the documentation here will demonstrate
 building a sample application step-by-step.
 
-The sample application that will be developed here is called "mywork" and is
-designed to help the software developer keep track of their work.  This is a
+The sample application that will be developed here is called "mywork-example" and
+is designed to help the software developer keep track of their work.  This is a
 simple little application that reads an input JSON file that provides information
 about different projects the developer is working on and then allows the
 developer to browse and manage the information about those projects.
 
-The underlying data for the mywork application consists of a list of Projects,
+#+begin_quote
+Note: there is a more complete implementation of this example at
+https://github.com/kquick/mywork, which has many more features, but which is no
+longer suitable for simple demonstration purposes.  The ~mywork-example~ is
+incomplete and not fully functional, and users who would like to see or use the
+more featureful implementation should use the one at the above link.
+#+end_quote
+
+The underlying data for the mywork-example application consists of a list of Projects,
 where each Project has a top-level description.  For each project, there are a
 number of Locations, which represents various locations the project can be found
 at; the Locations can include local directories, code repositories (e.g. github),
@@ -103,15 +111,15 @@ projects can be read from and written to a local JSON-format file.
   #+begin_quote
   Note that the ~ToJSON~ instances along with other administrative definitions
   are not shown here: this is a simple README and not intended to be a literate
-  Haskell program, and a fully specified version of this mywork example can be
-  found in the ~samples/mywork~ directory of this repository).
+  Haskell program, and the actual implementation of this mywork-example example
+  can be found in the ~samples/mywork~ directory of this repository).
   #+end_quote
 
 Since this is a TUI application, we will now design the overall appearance of the
 application:
 
 #+begin_example
-  +------------------------------- mywork v0.1 -------------------------------+
+  +---------------------------- mywork-example v0.1 --------------------------+
   | Projects: 30 (Author=8, Contributor=19, User=2), 2017-08-28 to 2022-09-10 |
   |---------------------------------------------------------------------------|
   | Project    | Location (for currently selected project in list)       Date |
@@ -319,7 +327,7 @@ but drawing Panes in the Panel can be done very generically:
     [
       joinBorders
       $ withBorderStyle unicode
-      $ borderWithLabel (str $ " mywork " <> showVersion version <> " ")
+      $ borderWithLabel (str $ " mywork-example " <> showVersion version <> " ")
       $ vBox $ catMaybes
       [
         panelDraw @SummaryPane mws
@@ -967,7 +975,7 @@ Note that a ~WLList~ value was added to the ~WName~ type as well, and the main
     [
       joinBorders
       $ withBorderStyle unicode
-      $ borderWithLabel  (str $ " mywork " <> showVersion version <> " ")
+      $ borderWithLabel  (str $ " mywork-example " <> showVersion version <> " ")
       $ vBox $ catMaybes
       [
         panelDraw @SummaryPane mws
@@ -1015,8 +1023,8 @@ global application changes needed are just to ensure that the Pane is added to
 the initialization operations and type, ensure it is part of the drawing code,
 and add any /special/ event handling needed for that Pane.
 
-Most of the rest of the development of the mywork application will follow this
-pattern, but it's worth looking at one additional aspect: modal panes.
+Most of the rest of the development of the mywork-example application will follow
+this pattern, but it's worth looking at one additional aspect: modal panes.
 
 
 *** File Load/Save Pane
@@ -1216,7 +1224,7 @@ although there are a couple of adjustments:
 drawMyWork mws =
   let mainPanes =
         [
-          borderWithLabel  (str $ " mywork " <> showVersion version <> " ")
+          borderWithLabel  (str $ " mywork-example " <> showVersion version <> " ")
           $ vBox $ catMaybes
           [
             panelDraw @SummaryPane mws
@@ -1233,7 +1241,7 @@ drawMyWork mws =
 **** FileMgr Pane Notes
 
   Not all of the details of the ~FileMgr~ modal Pane implementation are shown
-  above, but the remainder is relatively mechanical.  The ~samples/mywork~
+  above, but the remainder is relatively mechanical.  The ~samples/mywork-example~
   directory can be consulted for the more complete implementation details.
 
 ** Closing Notes
@@ -1244,8 +1252,8 @@ drawMyWork mws =
   coordinate both information sharing and isolation between the various Panes.
 
   Rather than pedantically walk through the remainder of the creation of the
-  ~mywork~ application implementation, the completion and extensions of this
-  sample application are left as exercises for the reader:
+  ~mywork-example~ application implementation, the completion and extensions of
+  this sample application are left as exercises for the reader:
 
   * Implement the Notes Pane, displaying the Notes associated with the selected
     Location.
@@ -1276,4 +1284,3 @@ drawMyWork mws =
    Brick Widgets are a great abstraction, but they are a fairly low-level
    abstraction that don't inherently support multiple, focusable sub-components
    and a generic abstraction interface.
-
