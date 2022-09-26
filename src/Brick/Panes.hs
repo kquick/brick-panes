@@ -146,6 +146,13 @@ class Pane n appEv pane updateType | pane -> n, pane -> updateType where
   -- of the 'FocusRing'.  It should modify the internal 'PaneState' as
   -- appropriate and make any appropriate changes to properly render the 'Pane'
   -- on the next 'drawPane' call.
+  --
+  -- Note that this function also receives an eventcontext which it may stipulate
+  -- constraints on.  Those constraints should be *read-only* constraints.  This
+  -- is especially important when the pane is used as part of a panel: the Panel
+  -- itself is passed as the eventcontext, but the panel may not be modified
+  -- because the panel event dispatching will overwrite any changes on
+  -- completion.
   handlePaneEvent :: (EventConstraints pane eventcontext, Eq n)
                   => eventcontext
                   -> EventType pane n appEv
