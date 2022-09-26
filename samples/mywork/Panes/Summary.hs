@@ -44,7 +44,13 @@ drawSummary prjcts =
                         )
         locDates prj = catMaybes (locatedOn <$> locations prj)
         projDates = concatMap locDates prjs
-    in vLimit 1
-       $ if null prjs
+    in vLimit 5
+       $ vBox
+       [
+         if null prjs
          then str "No projects defined"
          else prjcnt <+> fill ' ' <+> dateRange
+       , str " "
+       , str "Note: this is an example only and not fully functional."
+       , strWrap "See https://github.com/kquick/mywork for a fully functional and feature-rich version."
+       ]
