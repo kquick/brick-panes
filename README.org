@@ -366,7 +366,7 @@ initialization call.
       liftIO $ Vty.refresh vty
     -- Otherwise, allow the Panes in the Panel to handle the event
     ev -> do state0 <- get
-             state <- handleFocusAndPanelEvents myWorkFocusL state0 ev
+             (_,state) <- handleFocusAndPanelEvents myWorkFocusL state0 ev
              put state
   #+end_src
 
@@ -1001,7 +1001,7 @@ explicitly call the ~updatePane~ as seen in the modified excerpt here:
     -- Otherwise, allow the Panes in the Panel to handle the event
     ev -> do state0 <- get
              let proj0 = selectedProject state0
-             state <- handleFocusAndPanelEvents myWorkFocusL state0 ev
+             (_,state) <- handleFocusAndPanelEvents myWorkFocusL state0 ev
              let mprj = do pnm <- selectedProject state
                            guard (Just pnm /= proj0)
                            Data.List.find ((== pnm) . name)
@@ -1194,7 +1194,9 @@ although there are a couple of adjustments:
 
   #+begin_src haskell
     ev -> do proj0 <- gets selectedProject
-             get >>= (\s -> handleFocusAndPanelEvents myWorkFocusL s ev) >>= put
+             s <- get
+             (_,s') <- handleFocusAndPanelEvents myWorkFocusL s ev
+             put s'
              (new,prjs) <- gets getProjects
              when new $
                modify $ \s -> s
@@ -1215,6 +1217,34 @@ although there are a couple of adjustments:
       .
       (pSrch . editContentsL %~ Text.Zipper.clearZipper)
   #+end_src
+
+  There's also an alternative to saving and returning the ~new~ indication from
+  ~handleFocusAndPanelEvents~: the transition detection within brick-panes.  In
+  the above example, the first element of the tuple returned by
+  ~handleFocusAndPanelEvents~ is discarded, but it is a ~PanelTransition~ object.
+  There are two brick-panes functions that take a ~PanelTransition~ as an
+  argument: ~enteredModal~ and ~exitedModal~.  These can be used to detect if the
+  current event handling caused a modal to be newly displayed or dismissed, and
+  this can be used to perform various actions.  The following shows the global
+  event handler code that might use this method:
+
+  #+begin_src haskell
+    ev -> do proj0 <- gets selectedProject
+             s <- get
+             (trns,s') <- handleFocusAndPanelEvents myWorkFocusL s ev
+             put s'
+             when (exitedModal @FileMgr trns s') $
+               modify $ \s -> s
+                              & focusRingUpdate myWorkFocusL
+                              & onPane @Projects %~ updatePane (snd $ getProjects s)
+                              & onPane @FileMgrPane %~ updatePane False
+             ...
+  #+end_src
+
+  This implementation is slightly less efficient since it will perform the
+  updates on every exit from the FileMgr modal even if there were no changes to
+  the Projects it manages, but it demonstrates the usefulness of the
+  ~PanelTransition~ indication.
 
   Finally, the draw function is modified to draw the modal (if drawable) before
   the other Panes, drawing those Panes with the ~"disabled"~ attribute if the
