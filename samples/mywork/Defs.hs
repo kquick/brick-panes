@@ -12,10 +12,11 @@ import Brick hiding (Location)
 import Brick.Focus
 import Brick.Panes
 import Brick.Widgets.Border
-import Control.Lens
 import Data.Text ( Text )
 import Data.Time.Calendar
 import GHC.Generics ( Generic )
+import Lens.Micro
+import Lens.Micro.Extras ( view )
 
 
 newtype Projects = Projects { projects :: [Project] }

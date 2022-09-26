@@ -70,16 +70,17 @@ module Brick.Panes
 where
 
 import           Control.Applicative ( (<|>) )
-import           Control.Lens
 import qualified Data.Foldable as F
 import           Data.Kind ( Constraint, Type )
 import qualified Data.List as L
 import           Data.Maybe ( fromMaybe )
 import           Data.Sequence ( Seq, (><) )
 import qualified Data.Sequence as Seq
+import           Data.Type.Equality
 import           Data.Void ( Void, absurd )
 import           GHC.TypeLits
 import qualified Graphics.Vty as Vty
+import           Lens.Micro
 
 import           Brick
 import           Brick.Focus

@@ -8,7 +8,7 @@ module Panes.Location () where
 import           Brick hiding ( Location )
 import           Brick.Panes
 import           Brick.Widgets.List
-import           Control.Lens
+import           Lens.Micro
 import qualified Data.List as DL
 import           Data.Maybe ( fromMaybe )
 import           Data.Text ( Text )
@@ -38,7 +38,8 @@ instance Pane WName MyWorkEvent Location Project where
                      <=> str " "
     in Just $ renderList (const rndr) isFcsd (lL ps)
   focusable _ ps = focus1If WLocation $ not $ null $ listElements $ lL ps
-  handlePaneEvent _ ev = lList %%~ \w -> nestEventM' w (handleListEvent ev)
+  handlePaneEvent _ ev ps = do r <- nestEventM' (lL ps) (handleListEvent ev)
+                               return $ ps & lList .~ r
   updatePane prj ps =
     let ents = [ (location l, locatedOn l) | l <- locations prj ]
     in L $ listReplace (V.fromList ents) (Just 0) (lL ps)

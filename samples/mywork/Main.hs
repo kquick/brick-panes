@@ -12,7 +12,6 @@ import           Brick.Widgets.Border
 import           Brick.Widgets.Border.Style
 import           Brick.Widgets.Edit
 import           Brick.Widgets.List
-import           Control.Lens
 import           Control.Monad ( guard, when )
 import           Control.Monad.IO.Class ( liftIO )
 import qualified Data.List as DL
@@ -22,6 +21,7 @@ import           Graphics.Vty ( defAttr, withStyle, defaultStyleMask
                               , bold, reverseVideo, dim
                               , black, white, yellow, red )
 import qualified Graphics.Vty as Vty
+import           Lens.Micro
 
 import           Defs
 -- import           InitialData

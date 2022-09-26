@@ -23,12 +23,13 @@ import           Brick.Widgets.Center
 import qualified Brick.Widgets.Core as BC
 import           Brick.Widgets.FileBrowser
 import qualified Control.Exception as X
-import           Control.Lens
 import           Control.Monad.IO.Class ( liftIO )
 import           Data.Aeson ( ToJSON, FromJSON, decode, encode )
 import qualified Data.ByteString.Lazy as BS
 import qualified Data.Sequence as Seq
 import qualified Graphics.Vty as Vty
+import           Lens.Micro
+import           Lens.Micro.Extras ( view )
 import           System.Directory ( doesDirectoryExist )
 
 import           Defs

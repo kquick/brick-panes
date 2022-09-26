@@ -11,11 +11,11 @@ import           Brick
 import           Brick.Panes
 import           Brick.Widgets.Edit
 import           Brick.Widgets.List
-import           Control.Lens
 import qualified Data.Sequence as Seq
 import           Data.Text ( Text )
 import qualified Data.Text.Zipper as TZ
 import qualified Data.Vector as V
+import           Lens.Micro
 
 import           Defs
 
@@ -38,11 +38,12 @@ instance Pane WName MyWorkEvent Projects Projects where
     in Just $ vBox [ lst, fill ' ', srch ]
   handlePaneEvent _ ev ps =
     do ps1 <- case ev of
-                VtyEvent ev' ->
-                  ps & pList %%~ \w -> nestEventM' w (handleListEvent ev')
+                VtyEvent ev' -> do
+                  r <- nestEventM' (pL ps) (handleListEvent ev')
+                  return $ ps & pList .~ r
                 _ -> return ps
-       ps2 <- ps1 & pSrch %%~ \w -> nestEventM' w (handleEditorEvent ev)
-       return ps2
+       srch <- nestEventM' (ps ^. pSrch) (handleEditorEvent ev)
+       return $ ps1 & pSrch .~ srch
   focusable _ _ = Seq.singleton WProjList
   updatePane newprjs =
     (pList %~ listReplace (V.fromList (name <$> projects newprjs)) (Just 0))

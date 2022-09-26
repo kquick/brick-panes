@@ -735,11 +735,12 @@ lenses are defined:
       in Just $ vBox [ lst, fill ' ', srch ]
     handlePaneEvent _ ev ps =
       do ps1 <- case ev of
-                  VtyEvent ev' ->
-                    ps & pList %%~ \w -> nestEventM' w (handleListEvent ev')
+                  VtyEvent ev' -> do
+                    r <- nestEventM' (pL ps) (handleListEvent ev')
+                    return $ ps & pList .~ r
                   _ -> return ps
-         ps2 <- ps1 & pSrch %%~ \w -> nestEventM' w (handleEditorEvent ev)
-         return ps2
+         srch <- nestEventM' (ps ^. pSrch) (handleEditorEvent ev)
+         return $ ps1 & pSrch .~ srch
     focusable _ _ = Seq.singleton WProjList
 
 
@@ -939,7 +940,8 @@ thing is presented here at once:
                        <=> str " "
       in Just $ renderList (const rndr) isFcsd (lL ps)
     focusable _ ps = focus1If WLocation $ not $ null $ listElements $ lL ps
-    handlePaneEvent _ ev = lList %%~ \w -> nestEventM' w (handleListEvent ev)
+    handlePaneEvent _ ev ps = do r <- nestEventM' (lL ps) (handleListEvent ev)
+                                 return $ ps & lList .~ r
     updatePane prj ps =
       let ents = [ (location l, locatedOn l) | l <- locations prj ]
       in L $ listReplace (V.fromList ents) (Just 0) (lL ps)
