@@ -138,7 +138,7 @@ handleFileLoadEvent ev ts =
                                          & myProjectsL .~ prjs
       case ev of
         Vty.EvKey Vty.KEnter [] -> selectFile
-        -- EvKey (KChar ' ') [] -> selectFile -- override filebrowser's default multi-select ability
+        Vty.EvKey (Vty.KChar ' ') [] -> selectFile
         _ -> return $ ts & fBrowser .~ Just b
     Nothing -> return ts  -- shouldn't happen
 
