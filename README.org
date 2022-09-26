@@ -192,7 +192,7 @@ declaration:
 
   #+begin_src haskell
   data WName = WSummary | WProjList | WLocation | WNotes | WOps | WLoader
-  #+end_example
+  #+end_src
 
 For this simple application, there is no application-specific event type.  This
 could be specified as ~()~ directly, but we will use a convenient type synonym to
