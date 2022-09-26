@@ -5,6 +5,7 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE FunctionalDependencies #-}
 {-# LANGUAGE GADTs #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE RankNTypes #-}
@@ -37,6 +38,10 @@ module Brick.Panes
   , focusable
   , handlePaneEvent
   , updatePane
+  , enteredModal
+  , exitedModal
+  , PanelMode(Normal)
+  , PanelTransition
     -- ** Focus management helpers and constraints
   , focus1If
   , HasFocus
@@ -298,7 +303,6 @@ data PaneFocus n =
   | WhenFocusedModalHandlingAllEvents' (FocusRing n)  -- previous focus ring
 
 
-
 -- | If the base state provides Focus information, then the Panel can provide
 -- focus information.
 instance HasFocus appState n => HasFocus (Panel n appEv appState panes) n where
@@ -351,12 +355,16 @@ class PanelOps pane n appev panes s | pane -> n where
   panelStateUpdate :: Panel n appev s panes -> PaneState pane appev
                    -> Panel n appev s panes
 
+  -- | This returns an ordinal index of the pane within the panel.
+  paneNumber :: Panel n appev s panes -> PaneNumber
+
 
 instance (Pane n appev pane u) => PanelOps pane n appev (pane ': panes) s where
   handlePanelEvent s _p (PanelWith pd n r) ev =
     (\pd' -> PanelWith pd' n r) <$> dispEv Refl s ev pd
   panelState (PanelWith pd _ _) = pd
   panelStateUpdate (PanelWith _pd n r) = \pd' -> PanelWith pd' n r
+  paneNumber _ = PaneNo 0
 
 
 instance {-# OVERLAPPABLE #-} (PanelOps pane n appev panes s) =>
@@ -366,6 +374,7 @@ instance {-# OVERLAPPABLE #-} (PanelOps pane n appev panes s) =>
   panelState (PanelWith _ _ r) = panelState r
   panelStateUpdate (PanelWith pd n r) =
     \pd' -> PanelWith pd n $ panelStateUpdate r pd'
+  paneNumber (PanelWith _ _ r) = succ $ paneNumber @pane r
 
 
 instance ( TypeError
@@ -379,6 +388,7 @@ instance ( TypeError
   handlePanelEvent = absurd (undefined :: Void)
   panelState = absurd (undefined :: Void)
   panelStateUpdate = absurd (undefined :: Void)
+  paneNumber = absurd (undefined :: Void)
 
 
 -- | Called to draw a specific pane in the panel.  Typically invoked from the
@@ -444,16 +454,18 @@ handlePanelEvents panel ev (Focused focus) =
 -- If a Pane has no associated Widget name (the 'PaneFocus' value is specified as
 -- 'Nothing' when adding the Pane to the Panel) then its handler is never called.
 --
+-- This function returns the updated Panel state, as well as an indication of
+-- whether a modal transition occured while handling the event.
+--
 -- This function manages updating the focus when @Tab@ or @Shift-Tab@ is
 -- selected, except when the currently focused pane was created with the
 -- 'WhenFocusedModalHandlingAllEvents', in which case all events are passed
 -- through to the Pane.
-handleFocusAndPanelEvents :: Eq n
-                          => Ord n
+handleFocusAndPanelEvents :: Eq n => Ord n
                           => Lens' (Panel n appev s panes) (FocusRing n)
                           -> Panel n appev s panes
                           -> BrickEvent n appev
-                          -> EventM n es (Panel n appev s panes)
+                          -> EventM n es (PanelTransition, Panel n appev s panes)
 handleFocusAndPanelEvents focusL panel =
   let fcs = focusGetCurrent (panel ^. focusL)
       doPanelEvHandling = case fcs of
@@ -461,20 +473,99 @@ handleFocusAndPanelEvents focusL panel =
                             Just curFcs -> chkEv curFcs panel
   in \case
     VtyEvent (Vty.EvKey (Vty.KChar '\t') []) | doPanelEvHandling ->
-      return $ panel & focusL %~ focusNext
+      return (Nothing, panel & focusL %~ focusNext)
     VtyEvent (Vty.EvKey Vty.KBackTab []) | doPanelEvHandling ->
-      return $ panel & focusL %~ focusPrev
-    panelEv ->
-      focusRingUpdate focusL <$> handlePanelEvents panel panelEv (Focused fcs)
+      return (Nothing, panel & focusL %~ focusPrev)
+    panelEv -> do
+      u <- focusRingUpdate focusL <$> handlePanelEvents panel panelEv (Focused fcs)
+      let fcs' = focusGetCurrent (u ^. focusL)
+      if fcs == fcs'
+        then return (Nothing, u)
+        else let m0 = modalTgt (L.sort $ focusRingToList (panel ^. focusL)) panel
+                 m1 = modalTgt (L.sort $ focusRingToList (u ^. focusL)) u
+                 -- Note that the focusL-retrieved focus rings (m0, at least)
+                 -- come from the live previous pane set and may not match the
+                 -- order of the widget set.  Oddly, it doesn't match a rotation
+                 -- of the original either, ergo the sorting.
+             in return $ if m0 == m1
+                         then (Nothing, u)
+                         else (Just (m0, m1), u)
   where
     chkEv :: Eq n => n -> Panel n appev s panes -> Bool
     chkEv curFcs = \case
-                  Panel {} -> True
-                  PanelWith pd WhenFocusedModalHandlingAllEvents r ->
-                    (not $ curFcs `elem` focusable r pd) && chkEv curFcs r
-                  PanelWith pd (WhenFocusedModalHandlingAllEvents' _) r ->
-                    (not $ curFcs `elem` focusable r pd) && chkEv curFcs r
-                  PanelWith _ _ r -> chkEv curFcs r
+      Panel {} -> True
+      PanelWith pd WhenFocusedModalHandlingAllEvents r ->
+        (not $ curFcs `elem` focusable r pd) && chkEv curFcs r
+      PanelWith pd (WhenFocusedModalHandlingAllEvents' _) r ->
+        (not $ curFcs `elem` focusable r pd) && chkEv curFcs r
+      PanelWith _ _ r -> chkEv curFcs r
+    modalTgt :: Eq n => Ord n
+             => [n] -> Panel n appev s panes -> PanelMode
+    modalTgt fcsRing = \case
+      Panel {} -> Normal
+      PanelWith pd WhenFocusedModal r ->
+        matchOrRecurse fcsRing r $ focusable r pd
+      PanelWith pd (WhenFocusedModal' _) r ->
+        matchOrRecurse fcsRing r $ focusable r pd
+      PanelWith pd WhenFocusedModalHandlingAllEvents r ->
+        matchOrRecurse fcsRing r $ focusable r pd
+      PanelWith pd (WhenFocusedModalHandlingAllEvents' _) r ->
+        matchOrRecurse fcsRing r $ focusable r pd
+      PanelWith _ _ r -> case modalTgt fcsRing r of
+                           Normal -> Normal
+                           Modal p -> Modal $ succ p
+    matchOrRecurse :: Eq n => Ord n
+                   => [n] -> Panel n appev s pnlpanes -> Seq.Seq n -> PanelMode
+    matchOrRecurse fcsRing r f =
+      -- if fcsRing `elem` rotations (F.toList f)
+      if fcsRing == L.sort (F.toList f)
+      then Modal (PaneNo 0)
+      else case modalTgt fcsRing r of
+             Normal -> Normal
+             Modal p -> Modal $ succ p
+
+
+
+-- | Indicates the current mode of the Panel
+data PanelMode = Normal | Modal PaneNumber deriving (Eq)
+
+-- | Internal bookkeeping to identify a particular Pane within a Panel by number.
+newtype PaneNumber = PaneNo Natural deriving (Eq, Enum)
+
+
+-- | This is returned from the 'handleFocusAndPanelEvents' function to indicate
+-- whether a modal transition occured during the panel's (and associated Pane's)
+-- handling of this event.  This can be used by the outer-level application code
+-- to determine if a modal Pane was entered or exited due to the Event.
+type PanelTransition = Maybe (PanelMode, PanelMode)
+
+
+-- | Indicates if the specified Pane (via Type Application) is the one that was
+-- modally entered as a result of processing an event (as indicated by
+-- PanelTransition).
+enteredModal :: forall pane n appev state panes
+               . PanelOps pane n appev panes state
+               => PanelTransition -> Panel n appev state panes -> Bool
+               -- n.b. assumes the Panel passed here is the same panel passed to
+               -- handleFocusAndPanelEvents for which the PanelTransition was
+               -- obtained
+enteredModal = \case
+  Just (_, Modal pnum) -> (pnum ==) . paneNumber @pane
+  _ -> const False
+
+
+-- | Indicates if the specified Pane (via Type Application) is the one that was
+-- modally exited (dismissed) as a result of processing an event (as indicated by
+-- PanelTransition).
+exitedModal :: forall pane n appev state panes
+               . PanelOps pane n appev panes state
+               => PanelTransition -> Panel n appev state panes -> Bool
+               -- n.b. assumes the Panel passed here is the same panel passed to
+               -- handleFocusAndPanelEvents for which the PanelTransition was
+               -- obtained
+exitedModal = \case
+  Just (Modal pnum, _) -> (pnum ==) . paneNumber @pane
+  _ -> const False
 
 
 -- | When the Panel is managing focus events (e.g. when using

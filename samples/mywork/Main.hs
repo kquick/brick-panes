@@ -121,7 +121,9 @@ handleMyWorkEvent = \case
       modify ((focusRingUpdate myWorkFocusL) . (onPane @FileMgrPane .~ fmgr))
     -- Otherwise, allow the Panes in the Panel to handle the event
     ev -> do proj0 <- gets selectedProject
-             get >>= (\s -> handleFocusAndPanelEvents myWorkFocusL s ev) >>= put
+             s <- get
+             (_,s') <- handleFocusAndPanelEvents myWorkFocusL s ev
+             put s'
              (new,prjs) <- gets getProjects
              let mprj s = do pnm <- selectedProject s
                              guard (Just pnm /= proj0)
