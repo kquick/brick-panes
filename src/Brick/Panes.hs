@@ -608,8 +608,8 @@ focusRingUpdate focusL panel = let (p', r) = focusableNames focusL panel
 -- new focus is not modal, this will return that previous focus ring rather than
 -- the computed focus ring.
 focusableNames :: (Eq n, Ord n)
-          => Lens' (Panel n appev s panes) (FocusRing n)
-          -> Panel n appev s panes -> (Panel n appev s panes, [n])
+               => Lens' (Panel n appev s panes) (FocusRing n)
+               -> Panel n appev s panes -> (Panel n appev s panes, [n])
 focusableNames focusL panel = finish $ subFocusable focusL panel panel
   where
     finish ((prvFcs, pnl), (mdlFcs, regFcs)) =

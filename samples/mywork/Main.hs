@@ -125,18 +125,18 @@ handleMyWorkEvent = \case
              (_,s') <- handleFocusAndPanelEvents myWorkFocusL s ev
              put s'
              (new,prjs) <- gets getProjects
-             let mprj s = do pnm <- selectedProject s
-                             guard (Just pnm /= proj0)
-                             DL.find ((== pnm) . name) (projects prjs)
+             let mprj st = do pnm <- selectedProject st
+                              guard (Just pnm /= proj0)
+                              DL.find ((== pnm) . name) (projects prjs)
              when new $
-               modify $ \s -> s
-                              & focusRingUpdate myWorkFocusL
-                              & onPane @Projects %~ updatePane prjs
-                              & onPane @FileMgrPane %~ updatePane False
-             modify $ \s ->
-                        case mprj s of
-                          Just p -> s & onPane @Location %~ updatePane p
-                          _ -> s
+               modify $ \st -> st
+                               & focusRingUpdate myWorkFocusL
+                               & onPane @Projects %~ updatePane prjs
+                               & onPane @FileMgrPane %~ updatePane False
+             modify $ \st ->
+                        case mprj st of
+                          Just p -> st & onPane @Location %~ updatePane p
+                          _ -> st
              modify $ focusRingUpdate myWorkFocusL
 
 myWorkFocusL :: Lens' MyWorkState (FocusRing WName)
