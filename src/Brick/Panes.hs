@@ -49,7 +49,9 @@ module Brick.Panes
   , Panel
   , basePanel
   , addToPanel
-  , PaneFocus(..)
+  , PaneFocus( Always, Never, WhenFocused, WhenFocusedModal
+             , WhenFocusedModalHandlingAllEvents
+             )
     -- ** Pane and base state access
   , onPane
   , onBaseState
@@ -285,15 +287,15 @@ data PaneFocus n =
   --   equal to a 'focusable' return from the Pane, and that this should block
   --   all non-modal focus candidates (it is expected that there is only one
   --   modal, but this is not required).
-  | WhenFocusedModal (Maybe (FocusRing n))
+  | WhenFocusedModal
+  | WhenFocusedModal' (FocusRing n)  -- previous focus ring to return to
   -- | Indicates that the pane should receive events when the current focus is
   -- equal to a 'focusable' return from the Pane, and that this should block all
   -- non-modal focus candidates, just as with 'WhenFocusedModal'.  However, this
   -- also sends *all* events to the modal Pane instead of the normal 'Panel'
   -- handling of events (e.g.  @TAB@/@Shift-TAB@).
-  | WhenFocusedModalHandlingAllEvents (Maybe (FocusRing n))
-  -- (FocusRing n) on WhenFocusedModal is the previous focus ring
-  -- before the Modal was entered; used to restore on exit.
+  | WhenFocusedModalHandlingAllEvents
+  | WhenFocusedModalHandlingAllEvents' (FocusRing n)  -- previous focus ring
 
 
 
@@ -419,10 +421,17 @@ handlePanelEvents panel ev (Focused focus) =
                      WhenFocused -> if fcs `elem` focusable r pd
                                     then handleIt
                                     else skipIt
-                     WhenFocusedModal _ -> if fcs `elem` focusable r pd
-                                           then handleIt
-                                           else skipIt
-                     WhenFocusedModalHandlingAllEvents _ ->
+                     WhenFocusedModal -> if fcs `elem` focusable r pd
+                                         then handleIt
+                                         else skipIt
+                     WhenFocusedModal' _ -> if fcs `elem` focusable r pd
+                                            then handleIt
+                                            else skipIt
+                     WhenFocusedModalHandlingAllEvents ->
+                       if fcs `elem` focusable r pd
+                       then handleIt
+                       else skipIt
+                     WhenFocusedModalHandlingAllEvents' _ ->
                        if fcs `elem` focusable r pd
                        then handleIt
                        else skipIt
@@ -461,7 +470,9 @@ handleFocusAndPanelEvents focusL panel =
     chkEv :: Eq n => n -> Panel n appev s panes -> Bool
     chkEv curFcs = \case
                   Panel {} -> True
-                  PanelWith pd (WhenFocusedModalHandlingAllEvents _) r ->
+                  PanelWith pd WhenFocusedModalHandlingAllEvents r ->
+                    (not $ curFcs `elem` focusable r pd) && chkEv curFcs r
+                  PanelWith pd (WhenFocusedModalHandlingAllEvents' _) r ->
                     (not $ curFcs `elem` focusable r pd) && chkEv curFcs r
                   PanelWith _ _ r -> chkEv curFcs r
 
@@ -528,12 +539,30 @@ subFocusable focusL base = \case
         ns' = let pf = focusable r pd
               in (fst ns, pf >< snd ns)
     in (PanelWith pd WhenFocused <$> i', ns')
-  PanelWith pd (WhenFocusedModal pf) r ->
-    let (f', pf', i', ns') = goModal focusL base pd pf r
-    in ((f', PanelWith pd (WhenFocusedModal pf') i'), ns')
-  PanelWith pd (WhenFocusedModalHandlingAllEvents pf) r ->
-    let (f', pf', i', ns') = goModal focusL base pd pf r
-    in ((f', PanelWith pd (WhenFocusedModalHandlingAllEvents pf') i'), ns')
+  PanelWith pd WhenFocusedModal r ->
+    let (f', pf', i', ns') = goModal focusL base pd Nothing r
+        pfNew = case pf' of
+                  Nothing -> WhenFocusedModal
+                  Just x -> WhenFocusedModal' x
+    in ((f', PanelWith pd pfNew i'), ns')
+  PanelWith pd (WhenFocusedModal' pf) r ->
+    let (f', pf', i', ns') = goModal focusL base pd (Just pf) r
+        pfNew = case pf' of
+                  Nothing -> WhenFocusedModal
+                  Just x -> WhenFocusedModal' x
+    in ((f', PanelWith pd pfNew i'), ns')
+  PanelWith pd WhenFocusedModalHandlingAllEvents r ->
+    let (f', pf', i', ns') = goModal focusL base pd Nothing r
+        pfNew = case pf' of
+                  Nothing -> WhenFocusedModalHandlingAllEvents
+                  Just x -> WhenFocusedModalHandlingAllEvents' x
+    in ((f', PanelWith pd pfNew i'), ns')
+  PanelWith pd (WhenFocusedModalHandlingAllEvents' pf) r ->
+    let (f', pf', i', ns') = goModal focusL base pd (Just pf) r
+        pfNew = case pf' of
+                  Nothing -> WhenFocusedModalHandlingAllEvents
+                  Just x -> WhenFocusedModalHandlingAllEvents' x
+    in ((f', PanelWith pd pfNew i'), ns')
   PanelWith x y r -> let (i', ns) = subFocusable focusL base r
                      in (PanelWith x y <$> i', ns)
 

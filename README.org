@@ -252,8 +252,7 @@ the application.  Here's a summary of the brick-panes definitions for a ~Panel~.
              -> Panel n appev state (pane ': panes)
   addToPanel n pnl = ...
 
-  data PaneFocus n = Always | Never | WhenFocused
-                   | WhenFocusedModal (Maybe (FocusRing n))
+  data PaneFocus n = Always | Never | WhenFocused | WhenFocusedModal
   #+end_src
 
 To initialize our Brick application with the core state and the Panes defined
@@ -1140,7 +1139,7 @@ although there are a couple of adjustments:
                  $ addToPanel Never
                  $ addToPanel WhenFocused
                  $ addToPanel WhenFocused
-                 $ addToPanel (WhenFocusedModal Nothing)
+                 $ addToPanel WhenFocusedModal
                  $ basePanel initMyWorkCore
   #+end_src
 

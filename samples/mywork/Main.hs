@@ -74,7 +74,7 @@ initialState = focusRingUpdate myWorkFocusL
                $ addToPanel Never
                $ addToPanel WhenFocused
                $ addToPanel WhenFocused
-               $ addToPanel (WhenFocusedModal Nothing)
+               $ addToPanel WhenFocusedModal
                $ basePanel initMyWorkCore
 
 drawMyWork :: MyWorkState -> [Widget WName]
