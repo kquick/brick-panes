@@ -15,7 +15,7 @@
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE UndecidableInstances #-}
 
-{-| The 'Brick.Panes' package provides an overlay library for Brick that allows
+{-| This package provides an overlay library for Brick that allows
   individual TUI screen areas to be independently developed and then easily
   composed into the overall application.
 -}
