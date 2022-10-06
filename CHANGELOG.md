@@ -1,5 +1,9 @@
 # Revision history for brick-panes
 
+## 1.0.0.0 -- 2022-10-01
+
+* Public release.
+
 ## 0.3.0.0 -- 2022-09-29
 
 * Updated `handleFocusAndPanelEvents` to return a `PanelTransition` indication
