@@ -21,7 +21,10 @@ build-type:         Simple
 extra-doc-files:    CHANGELOG.md
                   , README.org
 
--- extra-source-files:
+flag examples
+    description: Build example programs
+    default: True
+    manual: False
 
 common settings
     ghc-options:  -Wall
@@ -70,6 +73,8 @@ executable mywork-example
                     , time
                     , vector >= 0.12 && < 0.14
                     , vty >= 5.36 && < 5.37
+    if !flag(examples)
+      buildable: False
 
 test-suite brick-panes-test
     import:           settings
