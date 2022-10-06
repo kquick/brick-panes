@@ -38,18 +38,12 @@ module Brick.Panes
   , focusable
   , handlePaneEvent
   , updatePane
-  , isPanelModal
-  , enteredModal
-  , exitedModal
-  , PanelMode(Normal)
-  , PanelTransition
     -- ** Focus management helpers and constraints
   , focus1If
   , HasFocus
   , getFocus
   , Focused(Focused)
   , focused
-  , focusRingUpdate
     -- * Panel Specification
     -- ** Definition and Initialization
   , Panel
@@ -65,8 +59,15 @@ module Brick.Panes
   , panelDraw
     -- ** Focus and Event management
   , handleFocusAndPanelEvents
+  , focusRingUpdate
+  , isPanelModal
+  , enteredModal
+  , exitedModal
+  , PanelMode(Normal, Modal)
+  , PanelTransition
     -- ** Access and operations
   , PanelOps(..)
+  , PaneNumber
   )
 where
 
@@ -160,8 +161,7 @@ class Pane n appEv pane updateType | pane -> n, pane -> updateType where
   -- constraints on.  Those constraints should be *read-only* constraints.  This
   -- is especially important when the pane is used as part of a panel: the Panel
   -- itself is passed as the eventcontext, but the panel may not be modified
-  -- because the panel event dispatching will overwrite any changes on
-  -- completion.
+  -- because the panel event dispatching will discard any changes on completion.
   handlePaneEvent :: (EventConstraints pane eventcontext, Eq n)
                   => eventcontext
                   -> EventType pane n appEv
@@ -548,7 +548,10 @@ isPanelModal :: Eq n
 isPanelModal focusL panel = Normal /= panelMode focusL panel
 
 
--- | Indicates the current mode of the Panel
+-- | Indicates the current mode of the Panel.  If Modal, the currently active
+-- modal Panel is identified by the PaneNumber, which matches the return value of
+-- the 'paneNumber' of PanelOps; in general, the use of 'isPaneModal' is
+-- recommended over attempting to determine _which_ actual modal pane is active.
 data PanelMode = Normal | Modal PaneNumber deriving (Eq)
 
 -- | Internal bookkeeping to identify a particular Pane within a Panel by number.
