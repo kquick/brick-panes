@@ -44,10 +44,10 @@ library
     default-language: Haskell2010
     exposed-modules:  Brick.Panes
     build-depends:    base >= 4.13 && < 4.18
-                    , brick >= 1.0 && < 1.3
+                    , brick >= 1.0 && < 1.4
                     , containers
                     , microlens >= 0.4.11.2 && < 0.5
-                    , vty >= 5.36 && < 5.37
+                    , vty >= 5.35 && < 5.38
 
 executable mywork-example
     import:           settings
@@ -65,7 +65,7 @@ executable mywork-example
                       Paths_brick_panes
     autogen-modules:  Paths_brick_panes
     build-depends:    base >= 4.13 && < 4.18
-                    , brick >= 1.0 && < 1.3
+                    , brick >= 1.0 && < 1.4
                     , brick-panes
                     , aeson >= 2.0 && < 2.2
                     , bytestring >= 0.10 && < 0.13
@@ -76,7 +76,7 @@ executable mywork-example
                     , text-zipper >= 0.12 && < 0.13
                     , time
                     , vector >= 0.12 && < 0.14
-                    , vty >= 5.36 && < 5.37
+                    , vty >= 5.35 && < 5.38
     if !flag(examples)
       buildable: False
 
