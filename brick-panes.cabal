@@ -21,6 +21,10 @@ build-type:         Simple
 extra-doc-files:    CHANGELOG.md
                   , README.org
 
+source-repository head
+    type: git
+    location: https://github.com/kquick/brick-panes
+
 flag examples
     description: Build example programs
     default: True
