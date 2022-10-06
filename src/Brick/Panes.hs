@@ -1,4 +1,5 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE FlexibleContexts #-}
@@ -83,6 +84,10 @@ import           Data.Void ( Void, absurd )
 import           GHC.TypeLits
 import qualified Graphics.Vty as Vty
 import           Lens.Micro
+#if !MIN_VERSION_base(4,16,0)
+-- starting in base 4.16.0.0, GHC.TypeLits exports Natural
+import           Numeric.Natural ( Natural )
+#endif
 
 import           Brick
 import           Brick.Focus
