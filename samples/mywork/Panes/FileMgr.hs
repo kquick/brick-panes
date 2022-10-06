@@ -37,7 +37,7 @@ import           Defs
 
 data FileMgrPane
 
-instance Pane WName MyWorkEvent FileMgrPane Bool where
+instance Pane WName MyWorkEvent FileMgrPane where
   data (PaneState FileMgrPane MyWorkEvent) =
     FB { fB :: Maybe (FileBrowser WName)
          -- ^ A Nothing value indicates the modal is not currently active
@@ -62,6 +62,7 @@ instance Pane WName MyWorkEvent FileMgrPane Bool where
              Focused (Just WFBrowser) -> handleFileLoadEvent ev ts
              Focused (Just WFSaveBtn) -> handleFileSaveEvent ev ts
              _ -> return ts
+  type (UpdateType FileMgrPane) = Bool
   updatePane newFlag ps = ps { newProjects = newFlag }
 
 

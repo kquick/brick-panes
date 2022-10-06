@@ -38,6 +38,8 @@ module Brick.Panes
   , DispatchEvent
   , focusable
   , handlePaneEvent
+    -- ** Updating the Pane's state
+  , UpdateType
   , updatePane
     -- ** Focus management helpers and constraints
   , focus1If
@@ -98,8 +100,8 @@ import           Brick.Focus
 -- Type parameters:
 --
 --  *  @pane@ = Pane Type, uniquely identifying this pane
+--  *  @appEv@ = The application's event type
 --  *  @n@ = Widget type parameter
---  *  @updateType@ = Update type (passed to 'updatePane')
 --
 -- The 'PaneState' specifies the state that should be stored globally
 -- and which provides the primary information for handling this pane
@@ -124,12 +126,15 @@ import           Brick.Focus
 -- within this Pane.  It should return the updated 'PaneState' in the context of
 -- an 'EventM' monadic operation.
 --
--- The 'updatePane' method is called with the 'updateType' to perform any
+-- The 'updatePane' method is called with the 'UpdateType' to perform any
 -- updating of the 'PaneState' from the update type data.
-class Pane n appEv pane updateType | pane -> n, pane -> updateType where
+class Pane n appEv pane | pane -> n where
 
   -- | State information associated with this pane
   data (PaneState pane appEv)
+
+  -- | Type of data provided to updatePane
+  type (UpdateType pane)
 
   -- | Constraints on argument passed to 'initPaneState'.  If there are no
   -- constraints, this may be specified as @()@, or simply omitted because @()@
@@ -174,9 +179,12 @@ class Pane n appEv pane updateType | pane -> n, pane -> updateType where
                   -> EventM n es (PaneState pane appEv)
   -- | Function called to update the internal 'PaneState', using the passed
   -- 'updateType' argument.
-  updatePane :: updateType -> PaneState pane appEv -> PaneState pane appEv
+  updatePane :: UpdateType pane
+             -> PaneState pane appEv
+             -> PaneState pane appEv
 
   -- A set of defaults that allows a minimal instance specification
+  type (UpdateType pane) = ()
   type (InitConstraints pane initctxt) = ()
   type (DrawConstraints pane drwctxt n) = ()
   type (EventConstraints pane evctxt) = ()
@@ -219,7 +227,7 @@ newtype Focused n = Focused { focused :: Maybe n
 -- internally in the brick-panes implementation and client code does not need to
 -- explicitly specify instances of this class.
 class DispatchEvent n appev pane evtype where
-  dispEv :: ( Pane n appev pane updateType
+  dispEv :: ( Pane n appev pane
             , EventConstraints pane base
             , Eq n
             )
@@ -256,7 +264,7 @@ instance DispatchEvent n appev pane Vty.Event where
 -- Panes added before the current pane.
 data Panel n appev state (panes :: [Type]) where
   Panel :: state -> Panel n appev state '[]
-  PanelWith :: ( Pane n appev pane u
+  PanelWith :: ( Pane n appev pane
                , DrawConstraints pane (Panel n appev state panes) n
                , EventConstraints pane (Panel n appev state panes)
                , DispatchEvent n appev pane (EventType pane n appev)
@@ -273,7 +281,7 @@ basePanel = Panel
 
 -- | Each 'Pane' that is part of the 'Panel' should be added to the 'Panel' via
 -- this function, which also specifies when the `Pane` should receive Events.
-addToPanel :: Pane n appev pane u
+addToPanel :: Pane n appev pane
            => InitConstraints pane (Panel n appev state panes)
            => DrawConstraints pane (Panel n appev state panes) n
            => EventConstraints pane (Panel n appev state panes)
@@ -366,7 +374,7 @@ class PanelOps pane n appev panes s | pane -> n where
   paneNumber :: Panel n appev s panes -> PaneNumber
 
 
-instance (Pane n appev pane u) => PanelOps pane n appev (pane ': panes) s where
+instance (Pane n appev pane) => PanelOps pane n appev (pane ': panes) s where
   handlePanelEvent s _p (PanelWith pd n r) ev =
     (\pd' -> PanelWith pd' n r) <$> dispEv Refl s ev pd
   panelState (PanelWith pd _ _) = pd
@@ -389,7 +397,7 @@ instance ( TypeError
             ':$$: 'Text "Add this pane to your Panel (or move it lower)"
             ':$$: 'Text "(Possibly driven by DrawConstraints)"
            )
-         , Pane n appev pane u
+         , Pane n appev pane
          )
   => PanelOps pane n appev '[] s where
   handlePanelEvent = absurd (undefined :: Void)
@@ -400,10 +408,10 @@ instance ( TypeError
 
 -- | Called to draw a specific pane in the panel.  Typically invoked from the
 -- applications' global drawing function.
-panelDraw :: forall pane n appev s panes u .
+panelDraw :: forall pane n appev s panes .
              ( DrawConstraints pane (Panel n appev s panes) n
              , PanelOps pane n appev panes s
-             , Pane n appev pane u
+             , Pane n appev pane
              , Eq n
              )
           => Panel n appev s panes -> Maybe (Widget n)
@@ -690,7 +698,7 @@ subFocusable focusL base = \case
 goModal :: fullpanel ~ Panel n appev s panes
         => rempanel ~ Panel n appev s rempanes
         => EventConstraints pane rempanel
-        => Pane n appev pane updateType
+        => Pane n appev pane
         => Eq n
         => Lens' fullpanel (FocusRing n)
         -> fullpanel

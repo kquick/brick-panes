@@ -20,7 +20,7 @@ import           Lens.Micro
 import           Defs
 
 
-instance Pane WName MyWorkEvent Projects Projects where
+instance Pane WName MyWorkEvent Projects where
   data (PaneState Projects MyWorkEvent) = P { pL :: List WName Text
                                             , pS :: Editor Text WName
                                             }
@@ -45,6 +45,7 @@ instance Pane WName MyWorkEvent Projects Projects where
        srch <- nestEventM' (ps ^. pSrch) (handleEditorEvent ev)
        return $ ps1 & pSrch .~ srch
   focusable _ _ = Seq.singleton WProjList
+  type (UpdateType Projects) = Projects
   updatePane newprjs =
     (pList %~ listReplace (V.fromList (name <$> projects newprjs)) (Just 0))
     .

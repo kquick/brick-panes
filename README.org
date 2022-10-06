@@ -214,7 +214,7 @@ Each Pane will be identified by its own identifying datatype which will provide
 an instance of the ~Pane~ class.  The ~Pane~ class is defined in brick-panes:
 
   #+begin_src haskell
-  class Pane n appEv pane updateType | pane -> n, pane -> updateType where
+  class Pane n appEv pane | pane -> n where
       ...
   #+end_src
 
@@ -233,9 +233,9 @@ panes, and then come back later to add the additional panes.
   data SummaryPane
   data OperationsPane
 
-  instance Pane WName MyWorkEvent SummaryPane updateType where ...
-  instance Pane WName MyWorkEvent Projects updateType where ...
-  instance Pane WName MyWorkEvent OperationsPane updateType where ...
+  instance Pane WName MyWorkEvent SummaryPane where ...
+  instance Pane WName MyWorkEvent Projects where ...
+  instance Pane WName MyWorkEvent OperationsPane where ...
   #+end_src
 
 The other types for the instance and the actual instance details will be defined
@@ -409,7 +409,7 @@ to initialize that internal state.  The ~Pane~ class supports this via a data
 family declaration and an ~initPaneState~ method as defined in brick-panes:
 
   #+begin_src haskell
-  class Pane n appEv pane updateType | pane -> n, pane -> updateType where
+  class Pane n appEv pane | pane -> n where
     data (PaneState pane appEv)  -- State information associated with this Pane
     type (InitConstraints pane initctxt) :: Constraint
     initPaneState (InitConstraints pane i) => i -> PaneState pane appEv
@@ -450,7 +450,7 @@ the ~SummaryPane~ will have no internal state, so it will not need any
   {-# LANGUAGE TypeFamilies #-}
   {-# LANGUAGE TypeSynonymInstances #-}
 
-  instance Pane WName MyWorkEvent SummaryPane updateType where
+  instance Pane WName MyWorkEvent SummaryPane where
     data (PaneState SummaryPane MyWorkEvent) = Unused
     initPaneState _ = Unused
   #+end_src
@@ -462,7 +462,7 @@ corresponding constraint that can be used to encode any necessities for the draw
 implementation (which again default to ~()~ representing no constraints).
 
   #+begin_src haskell
-  class Pane n appEv pane updateType | pane -> n, pane -> updateType where
+  class Pane n appEv pane | pane -> n where
     data (PaneState pane appEv)  -- State information associated with this Pane
     type (InitConstraints pane initctxt) :: Constraint
     type (DrawConstraints pane drwctxt n) :: Constraint
@@ -499,7 +499,7 @@ obtain this information, it needs to translate the ~drawcontext~ argument to the
 the ~DrawContext~ as follows:
 
   #+begin_src haskell
-  instance Pane WName MyWorkEvent SummaryPane () where
+  instance Pane WName MyWorkEvent SummaryPane where
     data (PaneState SummaryPane MyWorkEvent) = Unused
     type (DrawConstraints SummaryPane s WName) = ( HasProjects s )
     initPaneState _ = Unused
@@ -584,7 +584,7 @@ item, etc.  Thus, the ~Pane~ state will need to contain these two Brick widgets
 and the initialization method should prepare them.
 
   #+begin_src haskell
-  instance Pane WName MyWorkEvent Projects updateType where
+  instance Pane WName MyWorkEvent Projects where
     data (PaneState Projects MyWorkEvent) = P { pL :: List WName Text
                                               , pS :: Editor Text WName
                                               }
@@ -611,7 +611,7 @@ Drawing this pane is relatively simple and primarily just invokes the draw for
 the two Widgets it contains.
 
   #+begin_src haskell
-  instance Pane WName MyWorkEvent Projects () where
+  instance Pane WName MyWorkEvent Projects where
     data (PaneState Projects MyWorkEvent) = P { pL :: List WName Text
                                               , pS :: Editor Text WName
                                               }
@@ -661,7 +661,7 @@ and corresponding constraint defined by brick-panes for allowing the ~Pane~ to
 handle events:
 
   #+begin_src haskell
-  class Pane n appEv pane updateType | pane -> n, pane -> updateType where
+  class Pane n appEv pane | pane -> n where
     data (PaneState pane appEv)   -- State information associated with this pane
     type (InitConstraints pane initctxt) :: Constraint
     type (DrawConstraints pane drwctxt n) :: Constraint
@@ -677,7 +677,7 @@ handle events:
                     -> EventType pane n appEv
                     -> PaneState pane appEv
                     -> EventM n es (PaneState pane appEv)
-    updatePane :: updateType -> PaneState pane appEv -> PaneState pane appEv
+    updatePane :: UpdateType pane -> PaneState pane appEv -> PaneState pane appEv
 
     -- A set of defaults that allows a minimal instance specification
     type (InitConstraints pane initctxt) = ()
@@ -686,6 +686,7 @@ handle events:
     type (EventType pane n appev) = Vty.Event  -- by default, handle Vty events
     focusable _ _ = mempty
     handlePaneEvent _ _ = return
+    type (UpdateType pane) = ()
     updatePane _ = id
   #+end_src
 
@@ -717,7 +718,7 @@ The ~handleEditorEvent~ called internally expects a ~BrickEvent~, so the
 lenses are defined:
 
   #+begin_src haskell
-  instance Pane WName MyWorkEvent Projects () where
+  instance Pane WName MyWorkEvent Projects where
     data (PaneState Projects MyWorkEvent) = P { pL :: List WName Text
                                               , pS :: Editor Text WName
                                               }
@@ -772,7 +773,7 @@ This Pane stores no internal data, so no internal storage or initialization is
 needed.
 
   #+begin_src haskell
-  instance Pane WName MyWorkEvent OperationsPane () where
+  instance Pane WName MyWorkEvent OperationsPane where
     data (PaneState OperationsPane MyWorkEvent) = Unused
     initPaneState _ = Unused
   #+end_src
@@ -850,7 +851,7 @@ selected, the draw functionality for the Operations pane can be made sensitive t
 that setting.
 
   #+begin_src haskell
-  instance Pane WName MyWorkEvent OperationsPane () where
+  instance Pane WName MyWorkEvent OperationsPane where
     data (PaneState OperationsPane MyWorkEvent) = Unused
     type (DrawConstraints OperationsPane s WName) = ( HasSelection s )
     initPaneState _ = Unused
@@ -921,7 +922,7 @@ Rather than showing how each aspect of the ~Location~ Pane is defined, the whole
 thing is presented here at once:
 
   #+begin_src haskell
-  instance Pane WName MyWorkEvent Location Project where
+  instance Pane WName MyWorkEvent Location where
     data (PaneState Location MyWorkEvent) = L { lL :: List WName (Text, Maybe Day) }
     type (InitConstraints Location s) = ( HasSelection s, HasProjects s )
     type (DrawConstraints Location s WName) = ( HasFocus s WName, HasSelection s )
@@ -942,6 +943,7 @@ thing is presented here at once:
     focusable _ ps = focus1If WLocation $ not $ null $ listElements $ lL ps
     handlePaneEvent _ ev ps = do r <- nestEventM' (lL ps) (handleListEvent ev)
                                  return $ ps & lList .~ r
+    type (UpdateType Location) = Project
     updatePane prj ps =
       let ents = [ (location l, locatedOn l) | l <- locations prj ]
       in L $ listReplace (V.fromList ents) (Just 0) (lL ps)
@@ -951,13 +953,14 @@ thing is presented here at once:
   #+end_src
 
 In the above, the final method for the ~Pane~ is introduced: the ~updatePane~
-method.  In addition, the 4th parameter is specified with a type, which specifies
-the type of the ~updatePane~ method's first argument.  This method is called
-externally with the specified argument whenever the Pane's internal state should
-be updated.  Here, it is intended to be called with the ~Project~ for which the
-~Location~ pane should show the locations, and it will update the internal
-~Brick.Widges.List~ with those locations.  This is also called directly from the
-~initPaneState~ when there is a selection at initialization time.
+method, along with the ~UpdateType~ specification (which previously defaulted to
+~()~).  The ~UpdateType~ specifies the type of the value passed to the
+~updatePane~ method's first argument.  This method is called externally with the
+specified argument whenever the Pane's internal state should be updated.  Here,
+it is intended to be called with the ~Project~ for which the ~Location~ pane
+should show the locations, and it will update the internal ~Brick.Widges.List~
+with those locations.  This is also called directly from the ~initPaneState~ when
+there is a selection at initialization time.
 
 Also of interest is the new ~focus1If~ function called by the ~focusable~ method.
 This brick-panes function is a convenience helper that returns the first argument
@@ -1059,7 +1062,7 @@ although there are a couple of adjustments:
   #+begin_src haskell
   data FileMgrPane
 
-  instance Pane WName MyWorkEvent FileMgrPane Bool where
+  instance Pane WName MyWorkEvent FileMgrPane where
     data (PaneState FileMgrPane MyWorkEvent) =
       FB { fB :: Maybe (FileBrowser WName)
            -- ^ A Nothing value indicates the modal is not currently active
@@ -1084,6 +1087,7 @@ although there are a couple of adjustments:
                Focused (Just WFBrowser) -> handleFileLoadEvent ev ts
                Focused (Just WFSaveBtn) -> handleFileSaveEvent ev ts
                _ -> return ts
+    type (UpdateType FileMgrPane) = Bool
     updatePane newFlag ps = ps { newProjects = newFlag }
 
   fBrowser :: Lens' (PaneState FileMgrPane MyWorkEvent) (Maybe (FileBrowser WName))
@@ -1212,8 +1216,9 @@ although there are a couple of adjustments:
   updating the displayed projects based on the new data:
 
   #+begin_src haskell
-  instance Pane WName MyWorkEvent Projects Projects where
+  instance Pane WName MyWorkEvent Projects where
     ...
+    type (UpdateType Projects) = Projects
     updatePane newprjs =
       (pList %~ listReplace (Vector.fromList (name <$> projects newprjs)) (Just 0))
       .

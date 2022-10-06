@@ -18,7 +18,7 @@ import qualified Data.Vector as V
 import           Defs
 
 
-instance Pane WName MyWorkEvent Location Project where
+instance Pane WName MyWorkEvent Location where
   data (PaneState Location MyWorkEvent) = L { lL :: List WName (Text, Maybe Day) }
   type (InitConstraints Location s) = ( HasSelection s, HasProjects s )
   type (DrawConstraints Location s WName) = ( HasFocus s WName, HasSelection s )
@@ -40,6 +40,7 @@ instance Pane WName MyWorkEvent Location Project where
   focusable _ ps = focus1If WLocation $ not $ null $ listElements $ lL ps
   handlePaneEvent _ ev ps = do r <- nestEventM' (lL ps) (handleListEvent ev)
                                return $ ps & lList .~ r
+  type (UpdateType Location) = Project
   updatePane prj ps =
     let ents = [ (location l, locatedOn l) | l <- locations prj ]
     in L $ listReplace (V.fromList ents) (Just 0) (lL ps)
