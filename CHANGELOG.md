@@ -1,11 +1,15 @@
 # Revision history for brick-panes
 
-## 0.3.0.0 -- 2022-09-23
+## 0.3.0.0 -- 2022-09-29
 
 * Updated `handleFocusAndPanelEvents` to return a `PanelTransition` indication
   along with the new `Panel`.  This can be used by applications perform
   additional actions if the event just handled caused a transition into or out-of
   a modal Pane.
+* The `exitedModal` and `enteredModal` functions can be used to determine the
+  type of transition (if any).
+* The `isPanelModal` function can be used to determine the current modal state of
+  the Panel.
 
 ## 0.2.0.0 -- 2022-09-22
 

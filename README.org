@@ -1246,7 +1246,8 @@ although there are a couple of adjustments:
   This implementation is slightly less efficient since it will perform the
   updates on every exit from the FileMgr modal even if there were no changes to
   the Projects it manages, but it demonstrates the usefulness of the
-  ~PanelTransition~ indication.
+  ~PanelTransition~ indication.  There is also a ~isPanelModal~ function that
+  returns True if the Panel is currently showing a Modal pane.
 
   Finally, the draw function is modified to draw the modal (if drawable) before
   the other Panes, drawing those Panes with the ~"disabled"~ attribute if the

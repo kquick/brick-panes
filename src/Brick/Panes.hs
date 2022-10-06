@@ -38,6 +38,7 @@ module Brick.Panes
   , focusable
   , handlePaneEvent
   , updatePane
+  , isPanelModal
   , enteredModal
   , exitedModal
   , PanelMode(Normal)
@@ -482,12 +483,8 @@ handleFocusAndPanelEvents focusL panel =
       let fcs' = focusGetCurrent (u ^. focusL)
       if fcs == fcs'
         then return (Nothing, u)
-        else let m0 = modalTgt (L.sort $ focusRingToList (panel ^. focusL)) panel
-                 m1 = modalTgt (L.sort $ focusRingToList (u ^. focusL)) u
-                 -- Note that the focusL-retrieved focus rings (m0, at least)
-                 -- come from the live previous pane set and may not match the
-                 -- order of the widget set.  Oddly, it doesn't match a rotation
-                 -- of the original either, ergo the sorting.
+        else let m0 = panelMode focusL panel
+                 m1 = panelMode focusL u
              in return $ if m0 == m1
                          then (Nothing, u)
                          else (Just (m0, m1), u)
@@ -500,7 +497,21 @@ handleFocusAndPanelEvents focusL panel =
       PanelWith pd (WhenFocusedModalHandlingAllEvents' _) r ->
         (not $ curFcs `elem` focusable r pd) && chkEv curFcs r
       PanelWith _ _ r -> chkEv curFcs r
-    modalTgt :: Eq n => Ord n
+
+
+panelMode :: Eq n
+          => Ord n
+          => Lens' (Panel n appev s panes) (FocusRing n)
+          -> Panel n appev s panes -> PanelMode
+panelMode focusL panel =
+  modalTgt (L.sort $ focusRingToList (panel ^. focusL)) panel
+  -- Note that the focusL-retrieved focus rings (m0, at least)
+  -- come from the live previous pane set and may not match the
+  -- order of the widget set.  Oddly, it doesn't match a rotation
+  -- of the original either, ergo the sorting.
+  where
+    modalTgt :: Eq n
+             => Ord n
              => [n] -> Panel n appev s panes -> PanelMode
     modalTgt fcsRing = \case
       Panel {} -> Normal
@@ -525,6 +536,16 @@ handleFocusAndPanelEvents focusL panel =
              Normal -> Normal
              Modal p -> Modal $ succ p
 
+
+-- | This function can be called at any time to determine if the Panel is
+-- currently displaying a Modal Pane.  This needs the Panel object and a lens
+-- that can be used to extract the FocusRing from the Panel.
+isPanelModal :: Eq n
+            => Ord n
+            => Lens' (Panel n appev s panes) (FocusRing n)
+            -> Panel n appev s panes
+            -> Bool
+isPanelModal focusL panel = Normal /= panelMode focusL panel
 
 
 -- | Indicates the current mode of the Panel
