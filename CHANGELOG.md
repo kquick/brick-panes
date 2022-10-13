@@ -1,5 +1,9 @@
 # Revision history for brick-panes
 
+## 1.0.0.1 -- 2022-10-13
+
+* Documentation improvements.
+
 ## 1.0.0.0 -- 2022-10-01
 
 * Public release.
