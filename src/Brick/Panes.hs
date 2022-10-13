@@ -19,6 +19,47 @@
 {-| This package provides an overlay library for Brick that allows
   individual TUI screen areas to be independently developed and then easily
   composed into the overall application.
+
+  This is done by representing each 'Pane' via a class that describes the common
+  types and methods for that 'Pane', as well as the internal state of the 'Pane'.
+  The full 'Pane' class is shown here in brief (more extensive documentation is
+  available below):
+
+  >  class Pane n appEv pane | pane -> n where
+  >    data PaneState pane appEv
+  >
+  >    type InitConstraints pane initctxt :: Constraint
+  >    initPaneState :: (InitConstraints pane i) => i -> PaneState pane appEv
+  >
+  >    type DrawConstraints pane drwctxt n :: Constraint
+  >    drawPane :: (DrawConstraints pane drawcontext n, Eq n)
+  >             => PaneState pane appEv -> drawcontext -> Maybe (Widget n)
+  >
+  >    type EventConstraints pane evctxt :: Constraint
+  >    type EventType pane n appEv
+  >    focusable :: (EventConstraints pane eventcontext, Eq n)
+  >              => eventcontext -> PaneState pane appEv -> Seq.Seq n
+  >    handlePaneEvent :: (EventConstraints pane eventcontext, Eq n)
+  >                    => eventcontext
+  >                    -> EventType pane n appEv
+  >                    -> PaneState pane appEv
+  >                    -> EventM n es (PaneState pane appEv)
+  >
+  >    type UpdateType pane
+  >    updatePane :: UpdateType pane
+  >               -> PaneState pane appEv
+  >               -> PaneState pane appEv
+
+  Each 'Pane' can be added to an overall 'Panel', where the 'Panel' provides
+  appropriate focus management and consolidates event and draw dispatching to the
+  (appropriate) panes.  The 'Panel' can support modal panes which grab focus (and
+  are not visible wheen not active and focused), panes which participate in a
+  normal focus ring, and panes which are never focused.  The 'Panel' is
+  represented by a recursive data structure that is initialized by calling the
+  'basePanel' function with the global application state and passing that result
+  to the 'addToPanel' function for each 'Pane' that should be added to the
+  'Panel'.
+
 -}
 
 module Brick.Panes
