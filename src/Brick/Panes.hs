@@ -172,20 +172,20 @@ import           Brick.Focus
 class Pane n appEv pane | pane -> n where
 
   -- | State information associated with this pane
-  data (PaneState pane appEv)
+  data PaneState pane appEv
 
   -- | Type of data provided to updatePane
-  type (UpdateType pane)
+  type UpdateType pane
 
   -- | Constraints on argument passed to 'initPaneState'.  If there are no
   -- constraints, this may be specified as @()@, or simply omitted because @()@
   -- is the default.
-  type (InitConstraints pane initctxt) :: Constraint
+  type InitConstraints pane initctxt :: Constraint
   -- | Function called to initialize the internal 'PaneState'
   initPaneState :: (InitConstraints pane i) => i -> PaneState pane appEv
 
   -- | Constraints on the @drawcontext@ parameter passed to 'drawPane'.
-  type (DrawConstraints pane drwctxt n) :: Constraint
+  type DrawConstraints pane drwctxt n :: Constraint
   -- | Function called to draw the 'Pane' as a Brick 'Widget', or 'Nothing' if
   -- this 'Pane' should not be drawn at the current time.
   drawPane :: (DrawConstraints pane drawcontext n, Eq n)
@@ -193,11 +193,11 @@ class Pane n appEv pane | pane -> n where
 
   -- | The constraints that should exist on the 'eventcontext' argment passed to
   -- 'focusable' and 'handlePaneEvent'.
-  type (EventConstraints pane evctxt) :: Constraint
+  type EventConstraints pane evctxt :: Constraint
   -- | The type of the event argument delivered to 'handlePaneEvent'.  This
   -- should either be 'Vty.Event' or 'BrickEvent', depending on what level of
   -- granularity the 'handlePaneEvent' operates at.
-  type (EventType pane n appEv)
+  type EventType pane n appEv
   -- | The 'focusable' method is called to determine which Widget targets should
   -- be part of the Brick 'FocusRing'.
   focusable :: (EventConstraints pane eventcontext, Eq n)
@@ -225,11 +225,11 @@ class Pane n appEv pane | pane -> n where
              -> PaneState pane appEv
 
   -- A set of defaults that allows a minimal instance specification
-  type (UpdateType pane) = ()
-  type (InitConstraints pane initctxt) = ()
-  type (DrawConstraints pane drwctxt n) = ()
-  type (EventConstraints pane evctxt) = ()
-  type (EventType pane n appev) = Vty.Event  -- by default, handle Vty events
+  type UpdateType pane = ()
+  type InitConstraints pane initctxt = ()
+  type DrawConstraints pane drwctxt n = ()
+  type EventConstraints pane evctxt = ()
+  type EventType pane n appev = Vty.Event  -- by default, handle Vty events
   focusable _ _ = mempty
   handlePaneEvent _ _ = return
   updatePane _ = id
