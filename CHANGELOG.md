@@ -1,5 +1,9 @@
 # Revision history for brick-panes
 
+## 1.0.0.2 -- 2022-11-01
+
+* Bump upper bound for brick to allow brick 1.4.
+
 ## 1.0.0.1 -- 2022-10-13
 
 * Documentation improvements.
