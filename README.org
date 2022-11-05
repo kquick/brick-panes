@@ -269,7 +269,7 @@ above:
   #+begin_src haskell
   {-# LANGUAGE DataKinds #-}
 
-  type MyWorkState = Panel Wname MyWorkEvent MyWorkCore
+  type MyWorkState = Panel WName MyWorkEvent MyWorkCore
                      '[ SummaryPane
                       , Projects
                       , OperationsPane
@@ -433,7 +433,7 @@ has already been initialized.  This means that for the ~SummaryPane~
 initialization call, the ~i~ parameter will be:
 
   #+begin_src haskell
-  Panel Wname MyWorkEvent MyWorkCore '[ Projects, OperationsPane ]
+  Panel WName MyWorkEvent MyWorkCore '[ Projects, OperationsPane ]
   #+end_src
 
 Recall that this is the same as MyWorkState except it is missing the SummaryPanel
