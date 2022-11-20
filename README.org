@@ -412,7 +412,7 @@ family declaration and an ~initPaneState~ method as defined in brick-panes:
   class Pane n appEv pane | pane -> n where
     data (PaneState pane appEv)  -- State information associated with this Pane
     type (InitConstraints pane initctxt) :: Constraint
-    initPaneState (InitConstraints pane i) => i -> PaneState pane appEv
+    initPaneState :: (InitConstraints pane i) => i -> PaneState pane appEv
 
     type (InitConstraints pane initctxt) = ()
   #+end_src
@@ -466,7 +466,7 @@ implementation (which again default to ~()~ representing no constraints).
     data (PaneState pane appEv)  -- State information associated with this Pane
     type (InitConstraints pane initctxt) :: Constraint
     type (DrawConstraints pane drwctxt n) :: Constraint
-    initPaneState (InitConstraints pane i) => i -> PaneState pane appEv
+    initPaneState :: (InitConstraints pane i) => i -> PaneState pane appEv
     drawPane :: (DrawConstraints pane drawcontext n, Eq n)
              => PaneState pane appEv -> drawcontext -> Maybe (Widget n)
 
