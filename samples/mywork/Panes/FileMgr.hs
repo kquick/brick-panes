@@ -18,6 +18,7 @@ module Panes.FileMgr
 where
 
 import           Brick hiding ( Location )
+import qualified Brick (Location(..))
 import           Brick.Panes
 import           Brick.Widgets.Center
 import qualified Brick.Widgets.Core as BC
@@ -110,7 +111,8 @@ drawFB ds b =
                                   $ strWrap
                                   $ X.displayException e
       savePane = (if fcsd == Just WFSaveBtn
-                  then withAttr (attrName "Selected")
+                  then withAttr (attrName "Selected") .
+                       putCursor WFSaveBtn (Brick.Location (1,0))
                   else id)
                  $ str "[SAVE]"
   in centerLayer (browserPane b <=> errDisplay b <=> savePane <=> helpPane)
