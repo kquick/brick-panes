@@ -1,6 +1,6 @@
 cabal-version:      3.0
 name:               brick-panes
-version:            1.0.0.2
+version:            1.0.0.3
 synopsis:
     Panes library for Brick providing composition and isolation for TUI apps.
 
