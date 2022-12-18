@@ -39,11 +39,13 @@
   >    type EventType pane n appEv
   >    focusable :: (EventConstraints pane eventcontext, Eq n)
   >              => eventcontext -> PaneState pane appEv -> Seq.Seq n
+  >    focusable _ _ = mempty
   >    handlePaneEvent :: (EventConstraints pane eventcontext, Eq n)
   >                    => eventcontext
   >                    -> EventType pane n appEv
   >                    -> PaneState pane appEv
   >                    -> EventM n es (PaneState pane appEv)
+  >    handlePaneEvent _ _ = return
   >
   >    type UpdateType pane
   >    updatePane :: UpdateType pane
@@ -53,7 +55,7 @@
   Each 'Pane' can be added to an overall 'Panel', where the 'Panel' provides
   appropriate focus management and consolidates event and draw dispatching to the
   (appropriate) panes.  The 'Panel' can support modal panes which grab focus (and
-  are not visible wheen not active and focused), panes which participate in a
+  are not visible when not active and focused), panes which participate in a
   normal focus ring, and panes which are never focused.  The 'Panel' is
   represented by a recursive data structure that is initialized by calling the
   'basePanel' function with the global application state and passing that result
@@ -174,7 +176,11 @@ class Pane n appEv pane | pane -> n where
   -- | State information associated with this pane
   data PaneState pane appEv
 
-  -- | Type of data provided to updatePane
+  -- | Type of data provided to updatePane.
+  --
+  -- The default is @()@, indicating that this Pane does not receive any external
+  -- data during an update (which usually indicates that the Pane does not update
+  -- once created).
   type UpdateType pane
 
   -- | Constraints on argument passed to 'initPaneState'.  If there are no
@@ -184,7 +190,12 @@ class Pane n appEv pane | pane -> n where
   -- | Function called to initialize the internal 'PaneState'
   initPaneState :: (InitConstraints pane i) => i -> PaneState pane appEv
 
-  -- | Constraints on the @drawcontext@ parameter passed to 'drawPane'.
+  -- | Constraints on the @drawcontext@ parameter passed to 'drawPane'.  This is
+  -- usually used when the Pane must establish class constraints on the
+  -- @drawcontext@ that it is passed, since this class definition is fully
+  -- polymorphic.  The default is @()@ which indicate there are no constraints on
+  -- the Pane's 'draw' function (meaning the Pane can be fully drawn using only
+  -- the internal 'PaneState').
   type DrawConstraints pane drwctxt n :: Constraint
   -- | Function called to draw the 'Pane' as a Brick 'Widget', or 'Nothing' if
   -- this 'Pane' should not be drawn at the current time.
@@ -192,7 +203,11 @@ class Pane n appEv pane | pane -> n where
            => PaneState pane appEv -> drawcontext -> Maybe (Widget n)
 
   -- | The constraints that should exist on the 'eventcontext' argment passed to
-  -- 'focusable' and 'handlePaneEvent'.
+  -- 'focusable' and 'handlePaneEvent'.  This is usually used when the Pane must
+  -- establish class constraints on the @eventcontext@, since this class
+  -- definition is fully polymorphic.  The default is @()@ which indicate there
+  -- are no constraints on the Pane's 'focusable' and 'handlePaneEvent' functions
+  -- (meaning the Pane can be fully drawn using only the internal 'PaneState').
   type EventConstraints pane evctxt :: Constraint
   -- | The type of the event argument delivered to 'handlePaneEvent'.  This
   -- should either be 'Vty.Event' or 'BrickEvent', depending on what level of
@@ -200,6 +215,9 @@ class Pane n appEv pane | pane -> n where
   type EventType pane n appEv
   -- | The 'focusable' method is called to determine which Widget targets should
   -- be part of the Brick 'FocusRing'.
+  --
+  -- The default is @mempty@, which indicates that no part of this Pane is ever
+  -- focusable.
   focusable :: (EventConstraints pane eventcontext, Eq n)
             => eventcontext -> PaneState pane appEv -> Seq.Seq n
   -- | Called to handle an 'EventType' event for the 'Pane'.  This is typically
@@ -213,6 +231,9 @@ class Pane n appEv pane | pane -> n where
   -- is especially important when the pane is used as part of a panel: the Panel
   -- itself is passed as the eventcontext, but the panel may not be modified
   -- because the panel event dispatching will discard any changes on completion.
+  --
+  -- The default is to return the pane state unmodified, indicating that this
+  -- Pane never responds to any events.
   handlePaneEvent :: (EventConstraints pane eventcontext, Eq n)
                   => eventcontext
                   -> EventType pane n appEv
@@ -220,6 +241,9 @@ class Pane n appEv pane | pane -> n where
                   -> EventM n es (PaneState pane appEv)
   -- | Function called to update the internal 'PaneState', using the passed
   -- 'updateType' argument.
+  --
+  -- The default is to return the pane state unmodified, indicating that this
+  -- Pane cannot have its internal state changed after creation.
   updatePane :: UpdateType pane
              -> PaneState pane appEv
              -> PaneState pane appEv
