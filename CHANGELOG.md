@@ -1,5 +1,9 @@
 # Revision history for brick-panes
 
+## 1.0.0.4 -- 2023-03-30
+
+* Bump upper bounds to allow brick 1.6 and vty 5.39 and text-zipper 0.13.
+
 ## 1.0.0.3 -- 2022-12-18
 
 * Bump upper bound for brick to allow brick 1.5.
