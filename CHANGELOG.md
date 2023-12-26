@@ -1,8 +1,16 @@
 # Revision history for brick-panes
 
+## 1.0.1.0 -- 2023-12-26
+
+* Update to use new vty 6.0 with cross-platform support and associated newer
+  brick version.  This adds the potential for multi-platform support (i.e. MacOS
+  and Windows native) although these are not currently explicitly tested.
+* Bump upper bounds to allow GHC 9.8
+
 ## 1.0.0.4 -- 2023-03-30
 
 * Bump upper bounds to allow brick 1.6 and vty 5.39 and text-zipper 0.13.
+* Bump upper bounds to allow GHC 9.6 and remove constraints on builtins.
 
 ## 1.0.0.3 -- 2022-12-18
 
