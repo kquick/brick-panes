@@ -1,5 +1,9 @@
 # Revision history for brick-panes
 
+## 1.0.2.0 -- 2024-08-30
+
+* Bump upper bounds to allow GHC 9.10.
+
 ## 1.0.1.0 -- 2023-12-26
 
 * Update to use new vty 6.0 with cross-platform support and associated newer
