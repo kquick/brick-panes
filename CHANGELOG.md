@@ -1,5 +1,9 @@
 # Revision history for brick-panes
 
+## 1.0.3.0 -- 2026-01-04
+
+* Bump upper bounds to allow GHC 9.12.
+
 ## 1.0.2.0 -- 2024-08-30
 
 * Bump upper bounds to allow GHC 9.10.
