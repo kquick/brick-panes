@@ -1,0 +1,47 @@
+name: brick-panes CI
+on:
+  push:
+    branches:
+      - 'main'
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        ghc-version: [ "ghc912", "ghc910", "ghc98", "ghc96", "ghc94" ]
+    steps:
+      - uses: cachix/install-nix-action@v31
+        with:
+          github_access_token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: cachix/cachix-action@v16
+        with:
+          name: kquick
+          authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
+      - name: build ${{ matrix.ghc-version }}
+        shell: bash
+        run: nix build github:${{ github.repository }}/${{ github.sha }}#brick-panes.${{ matrix.ghc-version }}
+  nixbuilds:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Lighten the load
+        uses: endersonmenezes/free-disk-space@v3
+        with:
+          remove_android: true
+          remove_dotnet: true
+          remove_folders: "/usr/share/swift /usr/share/miniconda /usr/share /usr/local/share"
+          rm_cmd: "rmz"  # faster
+      - uses: cachix/install-nix-action@v31
+        with:
+          github_access_token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: cachix/cachix-action@v16
+        with:
+          name: kquick
+          authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
+      - name: nixbuild_all
+        shell: bash
+        run: nix run github:galoisinc/eng dev nixbuild:all
+
