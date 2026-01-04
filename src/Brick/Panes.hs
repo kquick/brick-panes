@@ -696,13 +696,16 @@ focusRingUpdate focusL panel = let (p', r) = focusableNames focusL panel
               -- no current focus, just use new list
               focusSetCurrent n $ focusRing nl
             Just e ->
-              case L.find ((e ==) . head) $ rotations nl of
+              case L.find (maybe False (e ==) . maybeHead) $ rotations nl of
                 Just r ->
                   focusRing r -- new ring with current element still focused
                 Nothing ->
                   -- new focus ring doesn't include current focused
                   -- element, so just use the new list.
                   focusSetCurrent n $ focusRing nl
+    maybeHead = \case
+      (h:_) -> Just h
+      [] -> Nothing
 
 
 -- | This returns the focusable Widget names for the focus ring, in the 'Ord'
