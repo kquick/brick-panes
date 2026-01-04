@@ -1,0 +1,48 @@
+{
+  "nodes": {
+    "levers": {
+      "inputs": {
+        "nixpkgs": [
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1766149329,
+        "narHash": "sha256-RyltBNnAECIqVSizQ4F95/ZeXEIrLn2IxXDA5GkhhLc=",
+        "owner": "kquick",
+        "repo": "nix-levers",
+        "rev": "1510c08a57bb2a14cc0e66b28f0e13cd99ba9185",
+        "type": "github"
+      },
+      "original": {
+        "owner": "kquick",
+        "repo": "nix-levers",
+        "type": "github"
+      }
+    },
+    "nixpkgs": {
+      "locked": {
+        "lastModified": 1767364772,
+        "narHash": "sha256-fFUnEYMla8b7UKjijLnMe+oVFOz6HjijGGNS1l7dYaQ=",
+        "owner": "nixos",
+        "repo": "nixpkgs",
+        "rev": "16c7794d0a28b5a37904d55bcca36003b9109aaa",
+        "type": "github"
+      },
+      "original": {
+        "owner": "nixos",
+        "ref": "nixpkgs-unstable",
+        "repo": "nixpkgs",
+        "type": "github"
+      }
+    },
+    "root": {
+      "inputs": {
+        "levers": "levers",
+        "nixpkgs": "nixpkgs"
+      }
+    }
+  },
+  "root": "root",
+  "version": 7
+}
