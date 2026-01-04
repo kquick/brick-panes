@@ -1,0 +1,6 @@
+doc
+  README
+    type = Overview
+    title = README
+    abstract = Description of the brick-panes library
+    location = ./README.org

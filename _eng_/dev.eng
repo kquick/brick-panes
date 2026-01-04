@@ -1,0 +1,36 @@
+dev
+  subcmd
+    build
+      Builds the brick-panes library
+        exec = cabal build brick-panes
+    test
+      testcase
+        brick-panes-test
+          type = EXE
+          runner = cabal_test
+      testrunner
+        cabal_test
+          exec = cabal test {TestName}
+
+    flake_update =
+      Update flake dependencies =
+        in dir = {TopDir}
+        exec = nix flake update --option tarball-ttl 60
+    nixbuild
+      Uses nix to build with current GHC versions
+        in dir = {TopDir}
+        exec = nix build --no-link .#brick-panes.ghc912
+    nixbuild:old
+      Uses nix to build with old GHC versions
+        exec =
+          nix build --no-link --override-input nixpkgs github:nixos/nixpkgs/25.05 $(
+           for X in 810 90 92 ; do echo ".#brick-panes.ghc$X"; done)
+    nixbuild:recent
+      Uses nix to build with old GHC versions
+        exec =
+          declare -a ghcvers=(94 96 98 910 912)
+          nix build --no-link ${ghcvers[*]/#/.#brick-panes.ghc}
+    nixbuild:all
+      Uses nix to build with all supported GHC versions
+        needs = nixbuild nixbuild:old nixbuild:recent
+        exec = echo All nix builds completed
