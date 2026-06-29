@@ -1,6 +1,6 @@
 cabal-version:      3.0
 name:               brick-panes
-version:            1.0.3.0
+version:            1.0.4.0
 synopsis:
     Panes library for Brick providing composition and isolation for TUI apps.
 
@@ -23,6 +23,8 @@ tested-with:        GHC == 8.8.4
                     GHC == 9.4.4
                     GHC == 9.6
                     GHC == 9.8
+                    GHC == 9.10
+                    GHC == 9.12
 
 extra-doc-files:    CHANGELOG.md
                   , README.org
@@ -53,7 +55,7 @@ library
                     , brick >= 1.0 && < 2.11
                     , containers
                     , microlens >= 0.4.11.2 && < 0.6
-                    , vty >= 5.35 && < 6.6
+                    , vty >= 5.35 && < 6.7
 
 executable mywork-example
     import:           settings
@@ -82,7 +84,7 @@ executable mywork-example
                     , text-zipper >= 0.12 && < 0.14
                     , time
                     , vector >= 0.12 && < 0.14
-                    , vty >= 5.35 && < 6.6
+                    , vty >= 5.35 && < 6.7
     if !flag(examples)
       buildable: False
 
