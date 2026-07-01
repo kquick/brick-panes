@@ -1,5 +1,9 @@
 # Revision history for brick-panes
 
+## 1.0.5.0 -- 2026-07-01
+
+* Support Brick 2.11 and 2.12.
+
 ## 1.0.4.0 -- 2026-06-29
 
 * Bump upper bounds to allow newer vty 6.6 package.
