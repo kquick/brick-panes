@@ -1,5 +1,9 @@
 # Revision history for brick-panes
 
+## 1.0.5.1 -- 2026-08-15
+
+* Support Brick 2.13.
+
 ## 1.0.5.0 -- 2026-07-01
 
 * Support Brick 2.11 and 2.12.
